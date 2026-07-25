@@ -151,6 +151,10 @@ def run_pure_sequence():
     line()
     print(f"  RESULT: every step permitted AND inside the granted purpose; "
           f"refused by {fired or 'NOTHING — R4 did not fire'}")
+    if fired:
+        # The receipt for THIS decision. Not Run B's. Same input -> same hash.
+        print("\n  RECEIPT (replayable):")
+        print("  " + json.dumps(gate.receipts[-1], indent=2).replace("\n", "\n  "))
     return fired == "R4_SEQUENCE"
 
 
