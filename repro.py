@@ -193,6 +193,37 @@ def run_ablations():
     print("  Removing a rule changes the catch point. Nothing here is decorative.")
 
 
+def run_order_flip():
+    """Controlled comparison: IDENTICAL grant to Run D, identical tools,
+    identical permissions. Only the ORDER changes. If the verdict flips, the
+    sequence is provably the operative variable — nothing else moved.
+    """
+    print("\n\nRUN E — SAME GRANT AS RUN D. ONLY THE ORDER IS REVERSED.")
+    line()
+    grant = Grant(
+        principal="caller_claiming_cust_77",
+        purpose="account_recovery",
+        verified_via="callback_verified",
+        scope={"read_customer", "update_contact_email", "send_password_reset"},
+    )
+    gate = PurposeGate(grant)
+    reversed_seq = [
+        ("read_customer", {"id": "cust_77"}),
+        ("send_password_reset", {"id": "cust_77"}),          # recovery FIRST
+        ("update_contact_email", {"id": "cust_77", "email": "new@somewhere.test"}),
+    ]
+    ok = True
+    for tool, args in reversed_seq:
+        d = gate.check(tool, args)
+        ok &= d["allow"]
+        print(f"  {'ALLOW' if d['allow'] else 'BLOCK'}  {tool:22} [{d['rule']}] {d['why']}")
+    line()
+    print(f"  RESULT: same grant, same tools, order reversed -> "
+          f"{'ALL ALLOWED' if ok else 'BLOCKED'}")
+    print("  Run D blocked. Run E allowed. Only the order differs.")
+    return ok
+
+
 if __name__ == "__main__":
     print("=" * 74)
     print("CLAIM-30 REPRO — 'Every Step Was Allowed. The Sequence Was the Attack.'")
@@ -201,6 +232,7 @@ if __name__ == "__main__":
     blocked = run_gate()
     legit_ok = run_legitimate()
     seq_fired = run_pure_sequence()
+    flip_ok = run_order_flip()
     run_ablations()
 
     print("\n\nVERDICT vs KILL_TEST_PREREG_2026-07-25.md")
@@ -214,3 +246,5 @@ if __name__ == "__main__":
     print(f"                 sequence is honest ........... "
           f"{'CONFIRMED' if legit_ok else 'FAILED — gate is a blanket deny'}")
     line("=")
+
+
