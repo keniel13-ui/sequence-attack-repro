@@ -2,47 +2,82 @@
 
 **Every step can pass a real per-call guardrail. The sequence can still be account takeover.**
 
+A **proposed composition suite** for one failure family: sequence-composition attacks on agent authorization. Not an industry standard. Not a product claim. A small, open, runnable ladder with deterministic verdicts, content hashes, and dated next-hole predictions.
+
 ```bash
-python3 repro.py
+python3 repro.py      # full ladder A→I (named runs + receipts)
+python3 adapter.py    # scorecard: plug any gate that implements the contract
 ```
 
 No install. No network. No model. Stdlib only.
 
-## What you will see
+## What this is (and is not)
+
+| It is | It is not |
+|---|---|
+| A proposed open suite for **composition** attacks | *The* industry benchmark |
+| Nine named runs (A–I) + seven scored scenarios (S1–S7) | A test of injection, jailbreaks, or exfil |
+| Deterministic allow/block + `chain_sha256` receipts | Proof that vendors fail (not scored against them yet) |
+| A scope ladder with pre-registered predictions 10 & 11 | A claim that composition security is “solved” |
+
+Calibrated invitation: **run it, score your gate, try to break predictions 10 and 11.** If the law is wrong, we say so dated.
+
+## Ladder (`repro.py`)
 
 | Run | Meaning |
 |---|---|
 | **A** | Baseline RBAC + scoped token + per-call check + rate limit → **takeover succeeds** |
-| **B** | Purpose / provenance gate vs ticket-injection path → block (may also be catchable by injection tools) |
+| **B** | Purpose / provenance gate vs ticket-injection path → block |
 | **C** | Same email-change action, **honest** sequence → **ALLOWED** (not a blanket deny) |
 | **D** | Verified caller, no injection, everything in purpose → still **BLOCK** at composition (`R4_SEQUENCE`) + receipt |
 | **E** | Same grant as D, tools reversed → **all allowed** (only order differs) |
-| **F** | Same dangerous pair **split across two sessions** → takeover (session-scoped R4 is blind) — credit: ANP2 |
-| **G** | Same split with history on the **resource** (`ResourceLedger`) → **BLOCK** across sessions |
+| **F** | Same dangerous pair **split across two sessions** → takeover — credit: ANP2 |
+| **G** | Same split with history on the **resource** → **BLOCK** across sessions |
 | **H** | Mutation on `contact_77`, recovery on `auth_77` → resource-key **takeover**; customer-key **BLOCK** — credit: ANP2 |
-| **I** | Self-authored chain **forks** empty prior → takeover; same fork with **ExternalWitness** → **W1_FORK** |
+| **I** | Self-authored chain **forks** empty prior → takeover; **ExternalWitness** → **W1_FORK** |
 
-**Run D is the original claim.** Not "we catch prompt injection." Composition when no single step is out of policy.
+**Run D is the original claim.** Composition when no single step is out of policy.
 
-**Run F / G:** session hole → key on the resource.
+**F→I is the scope ladder:** session → resource → customer → out-of-issuer witness. Pre-registration of the next predicted holes: [`PREREG_COMPOSITION_LADDER_2026-07-26.md`](PREREG_COMPOSITION_LADDER_2026-07-26.md).
 
-**Run H:** resource hole → key on the **customer** (the human account / risk object).
+## Scorecard (`adapter.py`)
 
-**Run I:** the residual ANP2 named and left out of scope — a receipt signed only by the enforcing gate can fork; a witness **outside the issuer** rejects the rewrite. Receipt-layer form of: the verifier cannot live inside the agent it governs.
+Implement:
+
+```text
+new_session(grant) -> session
+session.check(tool, args) -> {"allow": bool, "rule": str}
+```
+
+Optional for S7: `issuer_history_reset()` — clear **only** issuer-local history (not an external witness).
+
+Reference card (author’s own gates scored honestly):
+
+| Implementation | Score | Notes |
+|---|---|---|
+| always-deny | 0/7 | Over-blocks S3/S4 |
+| always-allow / rbac | 2/7 | Passes honest paths only |
+| purpose gate, session-keyed | 4/7 | Misses S5–S7 |
+| purpose gate, **customer-keyed** | **6/7** | **Fails S7** (author is not top) |
+| purpose gate, **witness-anchored** | **7/7** | Survives issuer history fork |
+
+S7 models a self-authored history fork. The witness-anchored gate is also reset; it earns the pass because the external head is outside the issuer, not because it dodges the attack. See limits below on opt-in.
 
 ## Receipt
 
-On block, the gate prints a JSON receipt with grant, prior action classes, decision, why, and a stable `chain_sha256` over the content fields (timestamp is attached after the hash). Scoped receipts name `sequence_scope` (`resource` / `customer`) and the key they used.
+On block, JSON receipt with grant, prior action classes, decision, why, and stable `chain_sha256` over content fields (`decided_at` is after the hash). Scoped receipts name `sequence_scope` and the key used.
 
 ## Limits (read these)
 
 - Simulation — not wired into a production agent framework
 - Sequence rule is currently **one hardcoded pair** (identity mutation → credential recovery)
 - Ledgers and the external witness are in-process memory (not multi-host durable state)
+- **S7 fork is opt-in by construction:** the harness only forks gates that expose `issuer_history_reset`. A third-party gate that withholds that surface is never forked and could show a high score without an external anchor — and also cannot prove its history is not self-authored. S7 tests gates that expose issuer-local state (including both reference purpose gates), not “any 7/7 gate is witness-anchored.”
+- Author conflict: we ship reference gates scored by this suite. Defense: weaknesses listed; customer-keyed fails S7; suite is runnable against other gates via the adapter contract
 - Not a claim that no security product on earth can catch related attacks
 
 ## Background
 
 Related essay: [CLAIM-30 on DEV](https://dev.to/kenielzep97/every-step-was-allowed-the-sequence-was-the-attack-ai-memory-judgment-claim-30-4ehc)
 
-If this is already solved out of the box by a tool you know, open an issue or comment with the name and how it catches **Run D**.
+If this is already solved out of the box by a tool you know, open an issue or comment with the name and how it catches **Run D** (and, if you score the adapter, how you do on **S7**).

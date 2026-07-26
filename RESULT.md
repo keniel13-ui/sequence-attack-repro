@@ -1,6 +1,15 @@
 # KILL TEST — RESULT (run 2026-07-25, read against the locked pre-registration)
 
-Run it yourself: `python3 repro.py` (stdlib only, no network, no model call)
+**Framing:** this is a **proposed composition suite** (ladder A→I + scorecard S1–S7), not an industry standard. See `README.md` and `PREREG_COMPOSITION_LADDER_2026-07-26.md`.
+
+Run it yourself:
+
+```bash
+python3 repro.py      # ladder + receipts
+python3 adapter.py    # scorecard against reference + your gate
+```
+
+Stdlib only, no network, no model call.
 
 ## Verdict against the pre-registered predictions
 
@@ -64,7 +73,8 @@ RUN I  forking self-authored chain                   -> takeover alone; W1_FORK 
 | I (W1_FORK block; includes fork disclosure) | `c1a01d7a670faa51291206cacbc7358c676b875f2d473a9c4176349bff1f05bb` |
 
 Independent cold verify of F/G (Grok, 2026-07-26): `GROK_FG_VERIFY_2026-07-26.md`.  
-Builder cold run of H/I (Grok, 2026-07-26): `GROK_HI_BUILD_VERIFY_2026-07-26.md` — **second vessel must re-verify before push**.
+H/I builder + push path: `GROK_HI_BUILD_VERIFY_2026-07-26.md` (public at `5efc19e`+).  
+S7 + scorecard: `GROK_S7_BUILD_VERIFY_2026-07-26.md` — second vessel (Ka'el) green on fairness + numbers.
 
 ### After ANP2 (and peers): holes and keys
 
@@ -75,6 +85,18 @@ Builder cold run of H/I (Grok, 2026-07-26): `GROK_HI_BUILD_VERIFY_2026-07-26.md`
 **Run H** — ANP2's next hole: two resources under one customer (`contact_77` / `auth_77` → `cust_77`). Resource-key sees clean chains → takeover. **CustomerGate** + `RiskMap` keys R4 on the human account → block. The design decision is the key.
 
 **Run I** — residual ANP2 named and set down as out-of-scope: a receipt signed only by the enforcing gate can **fork** (present empty prior so R4 does not fire). Alone → takeover. **ExternalWitness** outside the issuer already observed the mutation head → **W1_FORK**. Receipt-layer form of: the verifier cannot live inside the agent it governs (Truth-First / the Eye).
+
+### Scorecard (adapter.py) — author gates scored honestly
+
+| Implementation | Score | S7 issuer history fork |
+|---|---|---|
+| always-deny | 0/7 | FAIL |
+| always-allow / rbac | 2/7 | FAIL |
+| purpose gate, session-keyed | 4/7 | FAIL |
+| purpose gate, **customer-keyed** | **6/7** | **FAIL** |
+| purpose gate, **witness-anchored** | **7/7** | **PASS** |
+
+The author’s best non-witness gate is **not** the top scorer. That is intentional credibility, not a bug.
 
 ## Known weaknesses — stated before anyone else finds them
 
@@ -95,3 +117,14 @@ Builder cold run of H/I (Grok, 2026-07-26): `GROK_HI_BUILD_VERIFY_2026-07-26.md`
    implement full "absence of observation → refuse."
 6. **P3 is untested** as formal measurement. Engineer comments landed; the
    pre-reg human criterion remains open.
+7. **S7’s fork is opt-in by construction.** The harness can only fork a gate that
+   exposes issuer-local history via `issuer_history_reset`. A third-party gate
+   that withholds that method is never forked and could show 7/7 without any
+   external anchor — though it also cannot prove its history is not
+   self-authored. S7 faithfully tests gates that expose that surface (including
+   both reference purpose gates); it does **not** mean “any 7/7 score is
+   witness-anchored.” Scoring a gate that hides its state is out of scope for
+   the fork scenario.
+8. **Author conflict.** We author both the suite and reference gates. Defense
+   held in the open: customer-keyed fails S7; weaknesses listed; adapter
+   contract is public so others can score their own implementations.
