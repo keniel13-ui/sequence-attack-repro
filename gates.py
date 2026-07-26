@@ -302,10 +302,26 @@ class RiskMap:
 
 
 class CustomerLedger:
+    """Also carries the receipt chain head, so cryptographic continuity is keyed
+    to the SAME risk object as the sequence policy. Without this the action
+    history survives a session boundary but the hash linkage restarts at zero."""
+
     """Sequence history keyed to the CUSTOMER (risk object), not one resource."""
 
     def __init__(self) -> None:
         self._by_customer: dict[str, list[str]] = {}
+
+    def head(self, customer: str):
+        return getattr(self, "_heads", {}).get(customer)
+
+    def seq(self, customer: str) -> int:
+        return getattr(self, "_seqs", {}).get(customer, 0)
+
+    def advance(self, customer: str, new_head: str) -> None:
+        if not hasattr(self, "_heads"):
+            self._heads, self._seqs = {}, {}
+        self._heads[customer] = new_head
+        self._seqs[customer] = self._seqs.get(customer, 0) + 1
 
     def record(self, customer: str, cls: str) -> None:
         self._by_customer.setdefault(customer, []).append(cls)
@@ -315,6 +331,20 @@ class CustomerLedger:
 
 
 class CustomerGate(PurposeGate):
+    def _seal(self, record: dict):
+        key = getattr(self, "_risk_key", None)
+        if key is None or not hasattr(self.ledger, "head"):
+            return PurposeGate._seal(self, record)
+        record["risk_key"] = key
+        record["previous_head"] = self.ledger.head(key)
+        record["sequence_number"] = self.ledger.seq(key)
+        blob = json.dumps(record, sort_keys=True, separators=(",", ":"))
+        head = hashlib.sha256(blob.encode()).hexdigest()
+        record["chain_sha256"] = head
+        record["decided_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        self.ledger.advance(key, head)
+        return record
+
     """Run H fix. R4_SEQUENCE keys on the customer via RiskMap + CustomerLedger.
 
     Two resources under one customer no longer hide each other: mutation on
@@ -331,6 +361,7 @@ class CustomerGate(PurposeGate):
         admitted = PURPOSE_ADMITS.get(self.grant.purpose, set())
         resource = args.get("id")
         customer = self.risk_map.customer_of(resource)
+        self._risk_key = customer
         prior = self.ledger.history(customer) if customer else []
 
         decision = {"allow": True, "rule": "PASS", "why": "within envelope"}
@@ -458,6 +489,7 @@ class ForkingCustomerGate(CustomerGate):
         admitted = PURPOSE_ADMITS.get(self.grant.purpose, set())
         resource = args.get("id")
         customer = self.risk_map.customer_of(resource)
+        self._risk_key = customer
         honest_prior = self.ledger.history(customer) if customer else []
 
         # Dishonest fork: if recovery would be blocked by real history, present

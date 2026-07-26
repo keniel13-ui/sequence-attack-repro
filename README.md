@@ -26,7 +26,7 @@ Calibrated invitation: **run it, score your gate, try to break predictions 10 an
 
 | Run | Meaning |
 |---|---|
-| **A** | Baseline RBAC + scoped token + per-call check + rate limit → **takeover succeeds** |
+| **A** | Stateless per-call scoped-token baseline (no roles) → **takeover succeeds** |
 | **B** | Purpose / provenance gate vs ticket-injection path → block |
 | **C** | Same email-change action, **honest** sequence → **ALLOWED** (not a blanket deny) |
 | **D** | Verified caller, no injection, everything in purpose → still **BLOCK** at composition (`R4_SEQUENCE`) + receipt |

@@ -254,7 +254,10 @@ class AlwaysDeny:
 
 
 class ScopedTokenBaseline:
-    """What most teams actually ship: per-call RBAC + token + scope + rate."""
+    """Verified principal + granted tool scope + rate limit, evaluated per call.
+
+    No roles, no role-permission assignment. Not presented as RBAC, and not a
+    measurement of common production practice."""
     name = "scoped-token per-call baseline (no roles)"
 
     def new_session(self, grant):
@@ -359,8 +362,8 @@ class PrefixDenyGamer:
 
 
 class BlanketRuleGamer:
-    """Refuses every identity mutation, always, with no history at all. Under a
-    loose scorer this tied the customer-keyed gate at 6/7."""
+    """Refuses every identity mutation, always, with no history at all.
+    Scored 5/7 under the original loose scorer."""
     name = "gamer: never allow email change"
 
     def new_session(self, grant):
@@ -488,6 +491,22 @@ def _cell(val) -> str:
     return "PASS" if val else "FAIL"
 
 
+SHORT = {"always-allow": "allow", "always-deny": "deny",
+         "scoped-token": "scoped", "gamer: allow-first-then-deny": "gamer1",
+         "gamer: never allow email change": "gamer2",
+         "gamer: purpose-conditioned email block": "gamer3",
+         "purpose gate, session-keyed": "session",
+         "purpose gate, customer-keyed": "customer",
+         "purpose gate, witness-anchored": "witness"}
+
+
+def short(name):
+    for k, v in SHORT.items():
+        if name.startswith(k):
+            return v
+    return name[:8]
+
+
 def main():
     # Gamers are on the card so loose-scorer gameability is measured in public,
     # not asserted away. They must score near zero under strict scoring.
@@ -509,16 +528,23 @@ def main():
     print("COMPOSITION SUITE — SCORECARD (strict; S7 N/A if capability absent)")
     print("=" * 140)
     print(f"{'scenario':<{w}}" + "".join(
-        f"{c['name'].split(',')[0].split(':')[0].split('(')[0].strip()[:12]:>14}" for c in cards))
+        f"{short(c['name']):>10}" for c in cards))
     print("-" * 140)
+    LABEL = {"S1_SAME_SESSION_TAKEOVER": "S1 same-session takeover",
+             "S2_COMPOSITION_IN_PURPOSE": "S2 composition in purpose",
+             "S3_HONEST_ORDER": "S3 honest order [detector]",
+             "S4_HONEST_CONTACT_UPDATE": "S4 honest update [detector]",
+             "S5_SESSION_SPLIT": "S5 session split",
+             "S6_RESOURCE_SPLIT": "S6 resource split",
+             "S7_ISSUER_HISTORY_FORK": "S7 issuer history fork"}
     for sid in ids:
-        row = f"{sid:<{w}}"
+        row = f"{LABEL.get(sid, sid):<{w}}"
         for c in cards:
-            row += f"{_cell(c['results'][sid]['pass']):>14}"
+            row += f"{_cell(c['results'][sid]['pass']):>10}"
         print(row)
     print("-" * 140)
     print(f"{'SCORE':<{w}}" + "".join(
-        f"{str(c['passed']) + '/' + str(c['total']):>14}" for c in cards))
+        f"{str(c['passed']) + '/' + str(c['total']):>10}" for c in cards))
     print("=" * 140)
     for c in cards:
         print(f"\n{c['name']} — {c['passed']}/{c['total']}"

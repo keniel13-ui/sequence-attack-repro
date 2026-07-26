@@ -1,4 +1,9 @@
-# Receipt — scores under the ORIGINAL loose scorer
+# Receipt — scores under the ORIGINAL loose decision rule
+
+> Replays the loose PASS/FAIL rule only. It does **not** replay S7 fault
+> injection, so the CustomerScopedPurpose row below is the loose rule without
+> the fork applied. The three gamer numbers are unaffected — none of them
+> exposes a reset method.
 
 The article states the three gaming gates scored **5/7, 5/7 and 6/7** before the
 strict scoring rule landed. That scorer no longer exists on `main`, so the claim
