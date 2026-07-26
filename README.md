@@ -19,22 +19,26 @@ No install. No network. No model. Stdlib only.
 | **E** | Same grant as D, tools reversed → **all allowed** (only order differs) |
 | **F** | Same dangerous pair **split across two sessions** → takeover (session-scoped R4 is blind) — credit: ANP2 |
 | **G** | Same split with history on the **resource** (`ResourceLedger`) → **BLOCK** across sessions |
+| **H** | Mutation on `contact_77`, recovery on `auth_77` → resource-key **takeover**; customer-key **BLOCK** — credit: ANP2 |
+| **I** | Self-authored chain **forks** empty prior → takeover; same fork with **ExternalWitness** → **W1_FORK** |
 
 **Run D is the original claim.** Not "we catch prompt injection." Composition when no single step is out of policy.
 
-**Run F is the honest hole.** Session-scoped sequence checks do not see what another conversation already did to the same customer record.
+**Run F / G:** session hole → key on the resource.
 
-**Run G is the fix the reviewers pointed at.** Key the invariant on the object, not the conversation.
+**Run H:** resource hole → key on the **customer** (the human account / risk object).
+
+**Run I:** the residual ANP2 named and left out of scope — a receipt signed only by the enforcing gate can fork; a witness **outside the issuer** rejects the rewrite. Receipt-layer form of: the verifier cannot live inside the agent it governs.
 
 ## Receipt
 
-On block, the gate prints a JSON receipt with grant, prior action classes, decision, why, and a stable `chain_sha256` over the content fields (timestamp is attached after the hash). Run G receipts also include `sequence_scope: resource` and the resource id.
+On block, the gate prints a JSON receipt with grant, prior action classes, decision, why, and a stable `chain_sha256` over the content fields (timestamp is attached after the hash). Scoped receipts name `sequence_scope` (`resource` / `customer`) and the key they used.
 
 ## Limits (read these)
 
 - Simulation — not wired into a production agent framework
 - Sequence rule is currently **one hardcoded pair** (identity mutation → credential recovery)
-- Resource ledger is in-process memory (not multi-host durable state)
+- Ledgers and the external witness are in-process memory (not multi-host durable state)
 - Not a claim that no security product on earth can catch related attacks
 
 ## Background

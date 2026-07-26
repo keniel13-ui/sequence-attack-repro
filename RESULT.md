@@ -50,22 +50,31 @@ RUN D  everything in policy, only composition wrong  -> BLOCK   [R4_SEQUENCE]
 RUN E  same grant as D, order reversed               -> ALL ALLOW (only order differs)
 RUN F  same pair split across two sessions           -> takeover (session-scoped R4 blind)
 RUN G  same split, history on the resource ledger    -> BLOCK   [R4_SEQUENCE] across sessions
+RUN H  mutation contact_77 / recovery auth_77        -> resource-key takeover; customer-key BLOCK
+RUN I  forking self-authored chain                   -> takeover alone; W1_FORK with ExternalWitness
 ```
 
-### Run D / Run G receipt hashes (content fields; `decided_at` is after the hash)
+### Receipt hashes (content fields; `decided_at` is after the hash)
 
 | Run | `chain_sha256` |
 |---|---|
 | D (session-scoped R4 block) | `726f65973fb027640049120971a43ca68300197d56ab2d74d5ca94a977d907a7` |
 | G (resource-scoped R4 block) | `d7e554a36c23cee3d46a1ca3ee0a0cd50abf9ea9eb2c9f778a10d20028a1f643` |
+| H (customer-scoped R4 block on auth_77) | `f81ad0ad6f4443b2b487bea49cd97646a5447f3761479e58684dd752158f83c3` |
+| I (W1_FORK block; includes fork disclosure) | `c1a01d7a670faa51291206cacbc7358c676b875f2d473a9c4176349bff1f05bb` |
 
-Independent cold verify of F/G (Grok, 2026-07-26): see `GROK_FG_VERIFY_2026-07-26.md`.
+Independent cold verify of F/G (Grok, 2026-07-26): `GROK_FG_VERIFY_2026-07-26.md`.  
+Builder cold run of H/I (Grok, 2026-07-26): `GROK_HI_BUILD_VERIFY_2026-07-26.md` — **second vessel must re-verify before push**.
 
-### After ANP2 (and peers): the honest hole and the fix
+### After ANP2 (and peers): holes and keys
 
-**Run F** is the session-split attack named in public review: identity mutation in session A, credential recovery in a **fresh** session B. Each session is clean. Session-scoped `PurposeGate` R4 never sees the prior mutation → takeover. That is the hole in Run D, shown not hidden.
+**Run F** — session-split: session-scoped R4 is blind.
 
-**Run G** is the record-level fix the reviewers converged on: `ResourceLedger` + `ResourceGate` key prior action classes on the **resource id** (`cust_77`), not on one conversation's `self.performed`. Same split → recovery blocked at `R4_SEQUENCE` with a receipt whose hash covers resource-scoped history (`sequence_scope: resource`).
+**Run G** — key on the **resource**. Same session-split → block.
+
+**Run H** — ANP2's next hole: two resources under one customer (`contact_77` / `auth_77` → `cust_77`). Resource-key sees clean chains → takeover. **CustomerGate** + `RiskMap` keys R4 on the human account → block. The design decision is the key.
+
+**Run I** — residual ANP2 named and set down as out-of-scope: a receipt signed only by the enforcing gate can **fork** (present empty prior so R4 does not fire). Alone → takeover. **ExternalWitness** outside the issuer already observed the mutation head → **W1_FORK**. Receipt-layer form of: the verifier cannot live inside the agent it governs (Truth-First / the Eye).
 
 ## Known weaknesses — stated before anyone else finds them
 
@@ -78,11 +87,11 @@ Independent cold verify of F/G (Grok, 2026-07-26): see `GROK_FG_VERIFY_2026-07-2
    it needs to sit on a real tool-call path (MCP server or an agent SDK).
 3. **R4 is currently a hardcoded composition rule.** One pair of action classes.
    A real version needs the dangerous compositions to be declarable, and that
-   list is the actual product surface. Run G moves *where* history is read
-   (resource vs session); it does not yet make compositions declarable.
-4. **Resource ledger is in-process memory.** Not durable, multi-host, or proven
-   across two different principals (multi-agent split is a named next proof).
-5. **Empty history is still fail-open for the composition rule.** Absence of
-   observed history is not yet treated as "cannot prove full history → refuse."
-6. **P3 is untested.** Two of three predictions are confirmed by code. The third
-   is a human judgment; engineer comments landed, formal P3 measurement still open.
+   list is the actual product surface (Task 3 / Run J not built yet).
+4. **Ledgers and ExternalWitness are in-process memory.** Not durable multi-host
+   state; not a cryptographic notary; not multi-agent principals proven yet.
+5. **Empty history is still fail-open for composition** when no witness is in
+   the loop. Witness catches *forked rewrite* of known history; it does not yet
+   implement full "absence of observation → refuse."
+6. **P3 is untested** as formal measurement. Engineer comments landed; the
+   pre-reg human criterion remains open.

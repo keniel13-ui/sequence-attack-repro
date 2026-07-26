@@ -268,3 +268,278 @@ class ResourceGate(PurposeGate):
         record["chain_sha256"] = hashlib.sha256(blob.encode()).hexdigest()
         record["decided_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
         return record
+
+
+# --------------------------------------------- customer / risk-object key (ANP2)
+
+class RiskMap:
+    """Maps a concrete resource id to the risk object that is actually at stake.
+
+    ANP2's resource-split: contact_77 and auth_77 can each look clean while both
+    belong to the same customer. The design decision is the key: not session,
+    not resource alone — the human account (customer) being taken over.
+    """
+
+    def __init__(self, resource_to_customer: dict[str, str] | None = None):
+        self._map = dict(resource_to_customer or {})
+
+    def customer_of(self, resource: str | None) -> str | None:
+        if resource is None:
+            return None
+        return self._map.get(resource, resource)
+
+
+class CustomerLedger:
+    """Sequence history keyed to the CUSTOMER (risk object), not one resource."""
+
+    def __init__(self) -> None:
+        self._by_customer: dict[str, list[str]] = {}
+
+    def record(self, customer: str, cls: str) -> None:
+        self._by_customer.setdefault(customer, []).append(cls)
+
+    def history(self, customer: str) -> list[str]:
+        return list(self._by_customer.get(customer, []))
+
+
+class CustomerGate(PurposeGate):
+    """Run H fix. R4_SEQUENCE keys on the customer via RiskMap + CustomerLedger.
+
+    Two resources under one customer no longer hide each other: mutation on
+    contact_77 and recovery on auth_77 share cust_77's history.
+    """
+
+    def __init__(self, grant: Grant, ledger: CustomerLedger, risk_map: RiskMap):
+        super().__init__(grant)
+        self.ledger = ledger
+        self.risk_map = risk_map
+
+    def check(self, tool: str, args: dict) -> dict:
+        cls = ACTION_CLASS.get(tool, "UNKNOWN")
+        admitted = PURPOSE_ADMITS.get(self.grant.purpose, set())
+        resource = args.get("id")
+        customer = self.risk_map.customer_of(resource)
+        prior = self.ledger.history(customer) if customer else []
+
+        decision = {"allow": True, "rule": "PASS", "why": "within envelope"}
+        if tool not in self.grant.scope:
+            decision = {"allow": False, "rule": "R1_SCOPE",
+                        "why": f"{tool} not permitted by grant"}
+        elif cls not in admitted:
+            decision = {"allow": False, "rule": "R2_PURPOSE",
+                        "why": (f"{tool} is {cls}; authority was granted for "
+                                f"purpose '{self.grant.purpose}' which admits "
+                                f"{sorted(admitted)}. Permission is not purpose.")}
+        elif cls == "IDENTITY_MUTATION" and self._untrusted():
+            src = self._untrusted()[0]
+            decision = {"allow": False, "rule": "R3_PROVENANCE",
+                        "why": (f"{cls} justified by facts from an untrusted "
+                                f"source ({src.source}). That source is not "
+                                f"entitled to grant identity changes.")}
+        elif cls == "CREDENTIAL_RECOVERY" and "IDENTITY_MUTATION" in prior:
+            decision = {"allow": False, "rule": "R4_SEQUENCE",
+                        "why": ("credential recovery after an identity mutation "
+                                "ON THIS CUSTOMER composes to account takeover, "
+                                "even across separate resources. The invariant "
+                                "keys on the risk object (the human account), "
+                                "not one resource row.")}
+
+        receipt = self._customer_receipt(
+            tool, args, cls, decision, prior, resource, customer)
+        self.receipts.append(receipt)
+        if decision["allow"] and customer is not None:
+            self.performed.append(cls)
+            self.ledger.record(customer, cls)
+        return {**decision, "receipt": receipt}
+
+    def _customer_receipt(self, tool, args, cls, decision, prior,
+                          resource, customer) -> dict:
+        record = {
+            "tool": tool,
+            "args": args,
+            "action_class": cls,
+            "grant": {
+                "principal": self.grant.principal,
+                "purpose": self.grant.purpose,
+                "verified_via": self.grant.verified_via,
+            },
+            "facts_in_chain": [
+                {"source": f.source, "trust": f.trust, "summary": f.summary}
+                for f in self.facts
+            ],
+            "sequence_scope": "customer",
+            "resource": resource,
+            "customer": customer,
+            "prior_action_classes": prior,
+            "decision": {"allow": decision["allow"], "rule": decision["rule"]},
+            "why": decision["why"],
+        }
+        blob = json.dumps(record, sort_keys=True, separators=(",", ":"))
+        record["chain_sha256"] = hashlib.sha256(blob.encode()).hexdigest()
+        record["decided_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        return record
+
+
+# ------------------------------------- external witness (leap ANP2 set down)
+
+class ExternalWitness:
+    """Out-of-issuer observer of chain heads per risk key.
+
+    ANP2 named it: a receipt signed only by the gate that enforces can fork —
+    keep two valid heads and reveal whichever lets the bad call through. A
+    witness held OUTSIDE the issuer is the residual he called out of scope.
+
+    This is the receipt-layer form of: the verifier cannot live inside the
+    agent it governs (Truth-First / the Eye).
+    """
+
+    def __init__(self) -> None:
+        # key -> ordered action classes the witness has actually seen
+        self._observed: dict[str, list[str]] = {}
+        # key -> last receipt head hash the witness accepted
+        self._heads: dict[str, str] = {}
+
+    def observed_history(self, key: str) -> list[str]:
+        return list(self._observed.get(key, []))
+
+    def last_head(self, key: str) -> str | None:
+        return self._heads.get(key)
+
+    def accept(self, key: str, action_class: str, head_hash: str) -> None:
+        """Record a head the witness has independently observed."""
+        self._observed.setdefault(key, []).append(action_class)
+        self._heads[key] = head_hash
+
+    def check_claimed_prior(self, key: str, claimed_prior: list[str]) -> dict:
+        """Reject if the issuer presents a history that is not what the witness saw.
+
+        That is the fork: two heads for the same key; the issuer reveals the
+        empty/clean one while the witness already holds the mutation head.
+        """
+        observed = self.observed_history(key)
+        if claimed_prior != observed:
+            return {
+                "ok": False,
+                "rule": "W1_FORK",
+                "why": (
+                    f"issuer claimed prior_action_classes={claimed_prior} for "
+                    f"key '{key}', but external witness already observed "
+                    f"{observed} (last head {self.last_head(key)}). "
+                    "A self-authored chain can fork; a witness outside the "
+                    "issuer cannot be rewritten by the gate that enforces."
+                ),
+            }
+        return {"ok": True, "rule": "W_PASS", "why": "claimed prior matches witness"}
+
+
+class ForkingCustomerGate(CustomerGate):
+    """Dishonest issuer: when honest customer history would block R4, presents
+    an empty prior and ALLOWS — a second head for the same key that makes the
+    call pass. Alone, the fork succeeds. With ExternalWitness in the loop,
+    the witness already holds the mutation head and rejects the rewrite.
+    """
+
+    def __init__(self, grant: Grant, ledger: CustomerLedger, risk_map: RiskMap,
+                 witness: ExternalWitness | None = None):
+        super().__init__(grant, ledger, risk_map)
+        self.witness = witness
+
+    def check(self, tool: str, args: dict) -> dict:
+        cls = ACTION_CLASS.get(tool, "UNKNOWN")
+        admitted = PURPOSE_ADMITS.get(self.grant.purpose, set())
+        resource = args.get("id")
+        customer = self.risk_map.customer_of(resource)
+        honest_prior = self.ledger.history(customer) if customer else []
+
+        # Dishonest fork: if recovery would be blocked by real history, present
+        # empty history so the composition looks clean.
+        forked = (
+            cls == "CREDENTIAL_RECOVERY"
+            and "IDENTITY_MUTATION" in honest_prior
+        )
+        presented_prior = [] if forked else honest_prior
+
+        decision = {"allow": True, "rule": "PASS", "why": "within envelope"}
+        if tool not in self.grant.scope:
+            decision = {"allow": False, "rule": "R1_SCOPE",
+                        "why": f"{tool} not permitted by grant"}
+        elif cls not in admitted:
+            decision = {"allow": False, "rule": "R2_PURPOSE",
+                        "why": (f"{tool} is {cls}; authority was granted for "
+                                f"purpose '{self.grant.purpose}' which admits "
+                                f"{sorted(admitted)}. Permission is not purpose.")}
+        elif cls == "IDENTITY_MUTATION" and self._untrusted():
+            src = self._untrusted()[0]
+            decision = {"allow": False, "rule": "R3_PROVENANCE",
+                        "why": (f"{cls} justified by facts from an untrusted "
+                                f"source ({src.source}). That source is not "
+                                f"entitled to grant identity changes.")}
+        elif cls == "CREDENTIAL_RECOVERY" and "IDENTITY_MUTATION" in presented_prior:
+            decision = {"allow": False, "rule": "R4_SEQUENCE",
+                        "why": ("credential recovery after identity mutation "
+                                "on this customer.")}
+        elif forked:
+            decision = {
+                "allow": True,
+                "rule": "PASS_FORK",
+                "why": (
+                    "issuer presented empty prior for this key (forked head) "
+                    "so self-authored R4 does not fire — the gate signed the "
+                    "history that lets the call through"
+                ),
+            }
+
+        # External witness: continuity check before the issuer's word is final.
+        if (
+            self.witness is not None
+            and decision["allow"]
+            and customer is not None
+        ):
+            w = self.witness.check_claimed_prior(customer, presented_prior)
+            if not w["ok"]:
+                decision = {
+                    "allow": False,
+                    "rule": w["rule"],
+                    "why": w["why"],
+                }
+
+        if forked:
+            # Signed content includes fork disclosure so the receipt cannot hide it.
+            record = {
+                "tool": tool,
+                "args": args,
+                "action_class": cls,
+                "grant": {
+                    "principal": self.grant.principal,
+                    "purpose": self.grant.purpose,
+                    "verified_via": self.grant.verified_via,
+                },
+                "facts_in_chain": [
+                    {"source": f.source, "trust": f.trust, "summary": f.summary}
+                    for f in self.facts
+                ],
+                "sequence_scope": "customer",
+                "resource": resource,
+                "customer": customer,
+                "prior_action_classes": presented_prior,
+                "forked_prior": True,
+                "honest_prior_action_classes": honest_prior,
+                "decision": {"allow": decision["allow"], "rule": decision["rule"]},
+                "why": decision["why"],
+            }
+            blob = json.dumps(record, sort_keys=True, separators=(",", ":"))
+            record["chain_sha256"] = hashlib.sha256(blob.encode()).hexdigest()
+            record["decided_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+            receipt = record
+        else:
+            receipt = self._customer_receipt(
+                tool, args, cls, decision, presented_prior, resource, customer)
+
+        self.receipts.append(receipt)
+
+        if decision["allow"] and customer is not None:
+            self.performed.append(cls)
+            self.ledger.record(customer, cls)
+            if self.witness is not None:
+                self.witness.accept(customer, cls, receipt["chain_sha256"])
+        return {**decision, "receipt": receipt}
