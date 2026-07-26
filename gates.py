@@ -170,3 +170,101 @@ class PurposeGate:
         record["chain_sha256"] = hashlib.sha256(blob.encode()).hexdigest()
         record["decided_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
         return record
+
+
+# ------------------------------------------------------- record-level fix (ANP2)
+
+class ResourceLedger:
+    """Sequence history keyed to the OBJECT being acted on, not the session.
+
+    ANP2 Network's point: "a conversation is one index into that history rather
+    than the edge of it." Split the pair across two sessions and a session-scoped
+    check goes blind — but the customer record remembers. This is that memory.
+    """
+
+    def __init__(self) -> None:
+        self._by_resource: dict[str, list[str]] = {}
+
+    def record(self, resource: str, cls: str) -> None:
+        self._by_resource.setdefault(resource, []).append(cls)
+
+    def history(self, resource: str) -> list[str]:
+        return list(self._by_resource.get(resource, []))
+
+
+class ResourceGate(PurposeGate):
+    """Run G. Identical to PurposeGate except R4_SEQUENCE keys on the RESOURCE
+    record (via a shared ledger) instead of this session's own history.
+
+    The only variable that changes vs PurposeGate is WHERE the prior-action
+    history comes from. Everything else — scope, purpose, provenance — is the
+    same. So splitting the pair across two sessions no longer hides the identity
+    mutation, because the invariant lives on the object, not the conversation.
+    """
+
+    def __init__(self, grant: Grant, ledger: ResourceLedger):
+        super().__init__(grant)
+        self.ledger = ledger
+
+    def check(self, tool: str, args: dict) -> dict:
+        cls = ACTION_CLASS.get(tool, "UNKNOWN")
+        admitted = PURPOSE_ADMITS.get(self.grant.purpose, set())
+        resource = args.get("id")
+        prior = self.ledger.history(resource)     # cross-session, per-object
+
+        decision = {"allow": True, "rule": "PASS", "why": "within envelope"}
+        if tool not in self.grant.scope:
+            decision = {"allow": False, "rule": "R1_SCOPE",
+                        "why": f"{tool} not permitted by grant"}
+        elif cls not in admitted:
+            decision = {"allow": False, "rule": "R2_PURPOSE",
+                        "why": (f"{tool} is {cls}; authority was granted for "
+                                f"purpose '{self.grant.purpose}' which admits "
+                                f"{sorted(admitted)}. Permission is not purpose.")}
+        elif cls == "IDENTITY_MUTATION" and self._untrusted():
+            src = self._untrusted()[0]
+            decision = {"allow": False, "rule": "R3_PROVENANCE",
+                        "why": (f"{cls} justified by facts from an untrusted "
+                                f"source ({src.source}). That source is not "
+                                f"entitled to grant identity changes.")}
+        elif cls == "CREDENTIAL_RECOVERY" and "IDENTITY_MUTATION" in prior:
+            decision = {"allow": False, "rule": "R4_SEQUENCE",
+                        "why": ("credential recovery after an identity mutation "
+                                "ON THIS RECORD composes to account takeover, even "
+                                "across separate sessions. The invariant lives on "
+                                "the object, not the conversation.")}
+
+        receipt = self._resource_receipt(tool, args, cls, decision, prior)
+        self.receipts.append(receipt)
+        if decision["allow"]:
+            self.performed.append(cls)
+            self.ledger.record(resource, cls)
+        return {**decision, "receipt": receipt}
+
+    def _resource_receipt(self, tool, args, cls, decision, prior) -> dict:
+        """Record-scoped receipt. The hash covers exactly the fields shown —
+        including the resource-scoped prior history — so the receipt can't claim
+        one history and be signed over another."""
+        record = {
+            "tool": tool,
+            "args": args,
+            "action_class": cls,
+            "grant": {
+                "principal": self.grant.principal,
+                "purpose": self.grant.purpose,
+                "verified_via": self.grant.verified_via,
+            },
+            "facts_in_chain": [
+                {"source": f.source, "trust": f.trust, "summary": f.summary}
+                for f in self.facts
+            ],
+            "sequence_scope": "resource",
+            "resource": args.get("id"),
+            "prior_action_classes": prior,
+            "decision": {"allow": decision["allow"], "rule": decision["rule"]},
+            "why": decision["why"],
+        }
+        blob = json.dumps(record, sort_keys=True, separators=(",", ":"))
+        record["chain_sha256"] = hashlib.sha256(blob.encode()).hexdigest()
+        record["decided_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        return record

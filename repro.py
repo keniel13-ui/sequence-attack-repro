@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 
-from gates import BaselineGuard, Grant, PurposeGate
+from gates import BaselineGuard, Grant, PurposeGate, ResourceGate, ResourceLedger
 
 # ----------------------------------------------------------- THE ATTACK (20 lines)
 # A support agent with entirely legitimate permissions. Nothing is stolen,
@@ -224,6 +224,70 @@ def run_order_flip():
     return ok
 
 
+def _recovery_grant():
+    """The Run D / hard-case grant, reused by the session-split runs."""
+    return Grant(
+        principal="caller_claiming_cust_77",
+        purpose="account_recovery",
+        verified_via="callback_verified",
+        scope={"read_customer", "update_contact_email", "send_password_reset"},
+    )
+
+
+def run_session_split():
+    """RUN F — ANP2's attack. The SAME dangerous pair, split across two sessions.
+    Each session is individually clean, so a session-scoped R4 never fires and the
+    composition lands anyway. This is the honest hole in Run D, shown not hidden.
+    """
+    print("\n\nRUN F — SESSION SPLIT (credit: ANP2). Two sessions, each clean.")
+    line()
+    # Session A: the identity mutation, then the session closes.
+    sess_a = PurposeGate(_recovery_grant())
+    d1 = sess_a.check("update_contact_email",
+                      {"id": "cust_77", "email": "attacker@evil.test"})
+    print(f"  session A  {'ALLOW' if d1['allow'] else 'BLOCK'}  "
+          f"update_contact_email   [{d1['rule']}]")
+    # Session B: a FRESH gate. Recovery. R4 keys on THIS session -> history empty.
+    sess_b = PurposeGate(_recovery_grant())
+    d2 = sess_b.check("send_password_reset", {"id": "cust_77"})
+    print(f"  session B  {'ALLOW' if d2['allow'] else 'BLOCK'}  "
+          f"send_password_reset    [{d2['rule']}]")
+    line()
+    took_over = d1["allow"] and d2["allow"]
+    print("  RESULT: pair split across two sessions -> "
+          + ("ACCOUNT TAKEOVER SUCCEEDED — session-scoped R4 is blind to the split"
+             if took_over else "blocked"))
+    return took_over
+
+
+def run_record_level_fix():
+    """RUN G — the fix ANP2, Nazar, Reid and Edu all pointed at independently:
+    key the invariant on the RECORD, not the session. One shared ledger; the two
+    sessions can no longer hide the identity mutation from each other.
+    """
+    print("\n\nRUN G — RECORD-LEVEL INVARIANT. Same split. Now it holds.")
+    line()
+    ledger = ResourceLedger()
+    sess_a = ResourceGate(_recovery_grant(), ledger)
+    d1 = sess_a.check("update_contact_email",
+                      {"id": "cust_77", "email": "attacker@evil.test"})
+    print(f"  session A  {'ALLOW' if d1['allow'] else 'BLOCK'}  "
+          f"update_contact_email   [{d1['rule']}]")
+    sess_b = ResourceGate(_recovery_grant(), ledger)
+    d2 = sess_b.check("send_password_reset", {"id": "cust_77"})
+    print(f"  session B  {'ALLOW' if d2['allow'] else 'BLOCK'}  "
+          f"send_password_reset    [{d2['rule']}]")
+    line()
+    held = d1["allow"] and not d2["allow"]
+    print("  RESULT: same split, invariant on the record -> "
+          + ("BLOCKED at R4_SEQUENCE across sessions — the fix holds"
+             if held else "FAILED"))
+    print("\n  receipt for the refused call (record-scoped, hash covers the "
+          "resource history it names):")
+    print("  " + json.dumps(d2["receipt"], indent=2).replace("\n", "\n  "))
+    return held
+
+
 if __name__ == "__main__":
     print("=" * 74)
     print("CLAIM-30 REPRO — 'Every Step Was Allowed. The Sequence Was the Attack.'")
@@ -233,6 +297,8 @@ if __name__ == "__main__":
     legit_ok = run_legitimate()
     seq_fired = run_pure_sequence()
     flip_ok = run_order_flip()
+    split_took_over = run_session_split()
+    record_fix_held = run_record_level_fix()
     run_ablations()
 
     print("\n\nVERDICT vs KILL_TEST_PREREG_2026-07-25.md")
@@ -245,6 +311,10 @@ if __name__ == "__main__":
     print(f"  honesty check: same action allowed when the")
     print(f"                 sequence is honest ........... "
           f"{'CONFIRMED' if legit_ok else 'FAILED — gate is a blanket deny'}")
+    print(f"  F   session split bypasses session-scoped R4  "
+          f"{'CONFIRMED — the hole ANP2 named' if split_took_over else 'no'}")
+    print(f"  G   record-level invariant catches the split  "
+          f"{'CONFIRMED — the fix holds' if record_fix_held else 'FAILED'}")
     line("=")
 
 

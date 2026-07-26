@@ -16,17 +16,25 @@ No install. No network. No model. Stdlib only.
 | **B** | Purpose / provenance gate vs ticket-injection path → block (may also be catchable by injection tools) |
 | **C** | Same email-change action, **honest** sequence → **ALLOWED** (not a blanket deny) |
 | **D** | Verified caller, no injection, everything in purpose → still **BLOCK** at composition (`R4_SEQUENCE`) + receipt |
+| **E** | Same grant as D, tools reversed → **all allowed** (only order differs) |
+| **F** | Same dangerous pair **split across two sessions** → takeover (session-scoped R4 is blind) — credit: ANP2 |
+| **G** | Same split with history on the **resource** (`ResourceLedger`) → **BLOCK** across sessions |
 
-**Run D is the claim.** Not "we catch prompt injection." Composition when no single step is out of policy.
+**Run D is the original claim.** Not "we catch prompt injection." Composition when no single step is out of policy.
+
+**Run F is the honest hole.** Session-scoped sequence checks do not see what another conversation already did to the same customer record.
+
+**Run G is the fix the reviewers pointed at.** Key the invariant on the object, not the conversation.
 
 ## Receipt
 
-On block, the gate prints a JSON receipt with grant, prior action classes, decision, why, and a stable `chain_sha256` over the content fields (timestamp is attached after the hash).
+On block, the gate prints a JSON receipt with grant, prior action classes, decision, why, and a stable `chain_sha256` over the content fields (timestamp is attached after the hash). Run G receipts also include `sequence_scope: resource` and the resource id.
 
 ## Limits (read these)
 
 - Simulation — not wired into a production agent framework
 - Sequence rule is currently **one hardcoded pair** (identity mutation → credential recovery)
+- Resource ledger is in-process memory (not multi-host durable state)
 - Not a claim that no security product on earth can catch related attacks
 
 ## Background

@@ -47,7 +47,25 @@ RUN A  baseline (RBAC + token + scope + rate limit)  -> 4/4 ALLOW -> takeover
 RUN B  purpose gate vs the attack                    -> BLOCK at step 3 [R2_PURPOSE]
 RUN C  same action, honest sequence                  -> ALLOW  (not a blanket deny)
 RUN D  everything in policy, only composition wrong  -> BLOCK   [R4_SEQUENCE]
+RUN E  same grant as D, order reversed               -> ALL ALLOW (only order differs)
+RUN F  same pair split across two sessions           -> takeover (session-scoped R4 blind)
+RUN G  same split, history on the resource ledger    -> BLOCK   [R4_SEQUENCE] across sessions
 ```
+
+### Run D / Run G receipt hashes (content fields; `decided_at` is after the hash)
+
+| Run | `chain_sha256` |
+|---|---|
+| D (session-scoped R4 block) | `726f65973fb027640049120971a43ca68300197d56ab2d74d5ca94a977d907a7` |
+| G (resource-scoped R4 block) | `d7e554a36c23cee3d46a1ca3ee0a0cd50abf9ea9eb2c9f778a10d20028a1f643` |
+
+Independent cold verify of F/G (Grok, 2026-07-26): see `GROK_FG_VERIFY_2026-07-26.md`.
+
+### After ANP2 (and peers): the honest hole and the fix
+
+**Run F** is the session-split attack named in public review: identity mutation in session A, credential recovery in a **fresh** session B. Each session is clean. Session-scoped `PurposeGate` R4 never sees the prior mutation → takeover. That is the hole in Run D, shown not hidden.
+
+**Run G** is the record-level fix the reviewers converged on: `ResourceLedger` + `ResourceGate` key prior action classes on the **resource id** (`cust_77`), not on one conversation's `self.performed`. Same split → recovery blocked at `R4_SEQUENCE` with a receipt whose hash covers resource-scoped history (`sequence_scope: resource`).
 
 ## Known weaknesses — stated before anyone else finds them
 
@@ -60,6 +78,11 @@ RUN D  everything in policy, only composition wrong  -> BLOCK   [R4_SEQUENCE]
    it needs to sit on a real tool-call path (MCP server or an agent SDK).
 3. **R4 is currently a hardcoded composition rule.** One pair of action classes.
    A real version needs the dangerous compositions to be declarable, and that
-   list is the actual product surface.
-4. **P3 is untested.** Two of three predictions are confirmed by code. The third
-   is a human judgment and nobody has looked at it yet.
+   list is the actual product surface. Run G moves *where* history is read
+   (resource vs session); it does not yet make compositions declarable.
+4. **Resource ledger is in-process memory.** Not durable, multi-host, or proven
+   across two different principals (multi-agent split is a named next proof).
+5. **Empty history is still fail-open for the composition rule.** Absence of
+   observed history is not yet treated as "cannot prove full history → refuse."
+6. **P3 is untested.** Two of three predictions are confirmed by code. The third
+   is a human judgment; engineer comments landed, formal P3 measurement still open.
