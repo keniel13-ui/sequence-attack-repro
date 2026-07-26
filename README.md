@@ -55,11 +55,21 @@ Reference card (author’s own gates scored honestly):
 
 | Implementation | Score | Notes |
 |---|---|---|
-| always-deny | 0/7 | Over-blocks S3/S4 |
-| always-allow / rbac | 2/7 | Passes honest paths only |
-| purpose gate, session-keyed | 4/7 | Misses S5–S7 |
-| purpose gate, **customer-keyed** | **6/7** | **Fails S7** (author is not top) |
-| purpose gate, **witness-anchored** | **7/7** | Survives issuer history fork |
+| always-deny (trivial) | 0/6 | Over-blocks the S3/S4 detectors |
+| always-allow | 2/6 | Honest paths only |
+| scoped-token per-call baseline (no roles) | 2/6 | Conformance 3/3 in its own domain |
+| gamer: allow-first-then-deny | 0/6 | Was 5/7 under the loose scorer |
+| gamer: never allow email change | 0/6 | Was 5/7 under the loose scorer |
+| gamer: purpose-conditioned email block | 1/6 | Was **6/7** loose — outscored a real stateful gate |
+| purpose gate, session-keyed | 4/6 | Misses both splits |
+| purpose gate, customer-keyed | 6/7 | **Fails S7** |
+| purpose gate, witness-anchored | 7/7 | S7 is the only row it needs the witness for |
+
+Scoring is strict: every call before the decisive one must be allowed, the decisive
+call must be refused, and the reason must map to the expected suite category
+(`SEQUENCE_COMPOSITION`, `HISTORY_FORK`, `PURPOSE_VIOLATION`, …). Implementations may
+expose `normalize_rule()` so a native code is not penalised for its name.
+S7 reports **N/A** and lowers the denominator when `issuer_history_reset` is absent.
 
 S7 models a self-authored history fork. The witness-anchored gate is also reset; it earns the pass because the external head is outside the issuer, not because it dodges the attack. See limits below on opt-in.
 

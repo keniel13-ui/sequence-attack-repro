@@ -105,6 +105,8 @@ class PurposeGate:
         self.grant = grant
         self.facts: list[Fact] = []
         self.performed: list[str] = []
+        self._head: str | None = None
+        self._seq: int = 0
         self.receipts: list[dict] = []
 
     def observe(self, source: str, trust: str, summary: str) -> None:
@@ -147,6 +149,22 @@ class PurposeGate:
             self.performed.append(cls)
         return {**decision, "receipt": receipt}
 
+
+    # ---- receipt chain ------------------------------------------------
+    # A hash over the current record only is a content digest, not a chain.
+    # Each receipt now commits to the previous head, so a rewritten history
+    # cannot present a matching chain without redoing every link.
+    def _seal(self, record: dict) -> dict:
+        record["previous_head"] = getattr(self, "_head", None)
+        record["sequence_number"] = getattr(self, "_seq", 0)
+        blob = json.dumps(record, sort_keys=True, separators=(",", ":"))
+        head = hashlib.sha256(blob.encode()).hexdigest()
+        record["chain_sha256"] = head
+        record["decided_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        self._head = head
+        self._seq = getattr(self, "_seq", 0) + 1
+        return record
+
     def _receipt(self, tool: str, args: dict, cls: str, decision: dict) -> dict:
         """Replayable: same inputs -> same chain hash, every time."""
         record = {
@@ -166,10 +184,7 @@ class PurposeGate:
             "decision": {"allow": decision["allow"], "rule": decision["rule"]},
             "why": decision["why"],
         }
-        blob = json.dumps(record, sort_keys=True, separators=(",", ":"))
-        record["chain_sha256"] = hashlib.sha256(blob.encode()).hexdigest()
-        record["decided_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-        return record
+        return self._seal(record)
 
 
 # ------------------------------------------------------- record-level fix (ANP2)
@@ -264,10 +279,7 @@ class ResourceGate(PurposeGate):
             "decision": {"allow": decision["allow"], "rule": decision["rule"]},
             "why": decision["why"],
         }
-        blob = json.dumps(record, sort_keys=True, separators=(",", ":"))
-        record["chain_sha256"] = hashlib.sha256(blob.encode()).hexdigest()
-        record["decided_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-        return record
+        return self._seal(record)
 
 
 # --------------------------------------------- customer / risk-object key (ANP2)
@@ -374,10 +386,7 @@ class CustomerGate(PurposeGate):
             "decision": {"allow": decision["allow"], "rule": decision["rule"]},
             "why": decision["why"],
         }
-        blob = json.dumps(record, sort_keys=True, separators=(",", ":"))
-        record["chain_sha256"] = hashlib.sha256(blob.encode()).hexdigest()
-        record["decided_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-        return record
+        return self._seal(record)
 
 
 # ------------------------------------- external witness (leap ANP2 set down)
@@ -527,10 +536,7 @@ class ForkingCustomerGate(CustomerGate):
                 "decision": {"allow": decision["allow"], "rule": decision["rule"]},
                 "why": decision["why"],
             }
-            blob = json.dumps(record, sort_keys=True, separators=(",", ":"))
-            record["chain_sha256"] = hashlib.sha256(blob.encode()).hexdigest()
-            record["decided_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-            receipt = record
+            receipt = self._seal(record)
         else:
             receipt = self._customer_receipt(
                 tool, args, cls, decision, presented_prior, resource, customer)
