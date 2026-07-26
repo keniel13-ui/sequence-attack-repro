@@ -367,7 +367,7 @@ def main():
     ids = [s.id for s in SCENARIOS]
     w = max(len(i) for i in ids) + 2
     print("=" * 112)
-    print("COMPOSITION SUITE — SCORECARD (local; S7 included)")
+    print("COMPOSITION SUITE — SCORECARD (S7 included)")
     print("=" * 112)
     print(f"{'scenario':<{w}}" + "".join(
         f"{c['name'].split(',')[0].split('(')[0].strip()[:14]:>16}" for c in cards))
