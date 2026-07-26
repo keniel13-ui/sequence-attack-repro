@@ -536,5 +536,9 @@ def main():
     print("Optional for S7: issuer_history_reset() clearing only issuer-local history.")
 
 
+    ok, tot = conformance(ScopedTokenBaseline)
+    print(f"\nBaseline conformance (separate from the composition score): {ok}/{tot}")
+    print("  verified in-scope ALLOW · unverified BLOCK · out-of-scope BLOCK")
+
 if __name__ == "__main__":
     main()

@@ -1,3 +1,5 @@
+> **STALE HASHES.** Written before receipts became a previous-head chain (commit 311cd58). Every hash below predates that change. The verdicts stand; the digests do not.
+
 # Grok independent verify — Run F / Run G
 
 **When:** 2026-07-26 ~16:48 EDT  

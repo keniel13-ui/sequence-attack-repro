@@ -31,3 +31,36 @@ We author both this benchmark and a gate (PurposeGate/ResourceGate/CustomerGate 
 
 ## The rule
 No moving these predictions after the fact. When hole #10 or #11 is reported by anyone, it is read against THIS file. If the law holds, the reporter finds a hole we already named. If a falsifier lands, the law is wrong and we say so, dated.
+
+---
+
+## ADDENDUM v2 — refined 2026-07-26 evening, after external review
+
+The original Prediction 10 and 11 text above is **retained verbatim and unchanged**.
+Both were criticised for the same defect: they named a *scope* rather than a
+*runnable trace*, and Prediction 11 as written was close to a tautology — if the
+adversary can rewrite both histories and no third store exists, "provably catches"
+contradicts its own threat model.
+
+Refined below. Still dated before anyone has reported either hole. Where the
+article and this file differ in wording, **this file is the record and the
+article is the restatement.**
+
+**PREDICTION 10 v2 — shared tenant recovery authority.**
+A customer-keyed history will miss a tenant-level recovery-administrator mutation
+followed by credential recovery for a *different* customer under that tenant. The
+customer gate sees clean history for the second customer. The semantic risk key is
+`tenant_id` (or `privileged_identity_id`), not merely a wider label.
+*Falsifier:* a customer-keyed check that catches that trace without widening the key.
+
+**PREDICTION 11 v2 — shared-reset witness.**
+A fault injection that clears issuer-local history *and* witness history through one
+compromised administrative capability. The witness-anchored gate will fail to detect
+the fork, because both views agree on the rewritten empty prior.
+*Falsifier:* the current gate blocks that frozen trace without relying on a third
+store or a capability outside the compromised principal's reach.
+
+**Stated separately, as a boundary rather than a prediction:** a witness is
+independent only to the extent that the adversary cannot rewrite or suppress both
+histories through the same capability. Independent key material is not the line.
+Independent write capability is.
