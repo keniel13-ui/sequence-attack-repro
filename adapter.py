@@ -416,6 +416,66 @@ def conformance(impl_factory) -> tuple:
     return ok, len(CONFORMANCE)
 
 
+class CapabilityLiarGamer:
+    """BLIND SPOT: S7 is gated on exposing issuer_history_reset. Nothing stopped
+    an implementation from exposing a NO-OP reset — claiming the capability,
+    never actually forking, and collecting the hardest row for free.
+
+    On the card it is caught by the category requirement: it refuses with a
+    composition reason, not a fork reason. Kept permanently so the defence is
+    measured rather than assumed."""
+    name = "gamer: fake fork capability"
+
+    def __init__(self):
+        self.inner = CustomerScopedPurpose()
+
+    def issuer_history_reset(self):
+        pass                      # claims the capability, does nothing
+
+    def new_session(self, grant):
+        return self.inner.new_session(grant)
+
+
+class ForeignVocabularyGate:
+    """BLIND SPOT: 'score your own gate' was asserted, never demonstrated. This
+    gate is the customer-keyed logic behind entirely foreign reason codes plus a
+    normalize_rule() mapping. If vendor neutrality is real it must score exactly
+    what the reference gate scores."""
+    name = "foreign vocabulary + normalize_rule"
+
+    NATIVE = {"R4_SEQUENCE": "seq.composition.denied",
+              "W1_FORK": "history.fork.detected",
+              "R2_PURPOSE": "purpose.envelope.denied",
+              "R3_PROVENANCE": "provenance.untrusted",
+              "R1_SCOPE": "scope.denied"}
+    BACK = {v: k for k, v in NATIVE.items()}
+    TO_CATEGORY = {"seq.composition.denied": "SEQUENCE_COMPOSITION",
+                   "history.fork.detected": "HISTORY_FORK",
+                   "purpose.envelope.denied": "PURPOSE_VIOLATION",
+                   "provenance.untrusted": "PROVENANCE_VIOLATION",
+                   "scope.denied": "SCOPE_VIOLATION"}
+
+    def __init__(self):
+        self.inner = CustomerScopedPurpose()
+
+    def issuer_history_reset(self):
+        if hasattr(self.inner, "issuer_history_reset"):
+            self.inner.issuer_history_reset()
+
+    def normalize_rule(self, decision):
+        return self.TO_CATEGORY.get(decision.get("rule"), decision.get("rule"))
+
+    def new_session(self, grant):
+        inner = self.inner.new_session(grant)
+        native = self.NATIVE
+        class Renamed:
+            def check(self, tool, args):
+                d = dict(inner.check(tool, args))
+                d["rule"] = native.get(d.get("rule"), d.get("rule"))
+                return d
+        return Renamed()
+
+
 # -------------------------------------------------------------------- scorer
 
 def score(impl_factory, scenarios=SCENARIOS) -> dict:
@@ -449,6 +509,11 @@ def score(impl_factory, scenarios=SCENARIOS) -> dict:
             session = impl.new_session(grant)
             for ci, call in enumerate(sess.calls):
                 d = session.check(call.tool, call.args)
+                if not isinstance(d, dict) or "allow" not in d:
+                    raise ValueError(
+                        f"{impl.name}: check() must return a dict containing "
+                        f"'allow'; got {d!r}. A malformed decision would "
+                        "otherwise be read as a refusal and score as a catch.")
                 decisions[(si, ci)] = d
                 if not d.get("allow"):
                     stop = True
@@ -497,7 +562,9 @@ SHORT = {"always-allow": "allow", "always-deny": "deny",
          "gamer: purpose-conditioned email block": "gamer3",
          "purpose gate, session-keyed": "session",
          "purpose gate, customer-keyed": "customer",
-         "purpose gate, witness-anchored": "witness"}
+         "purpose gate, witness-anchored": "witness",
+         "gamer: fake fork capability": "gamer4",
+         "foreign vocabulary": "foreign"}
 
 
 def short(name):
@@ -561,6 +628,16 @@ def main():
     print("\nTo score your own: implement new_session(grant) and check(tool,args).")
     print("Optional for S7: issuer_history_reset() clearing only issuer-local history.")
 
+
+    print("\nADVERSARIAL + NEUTRALITY CHECKS (reported separately)")
+    for cls, note in ((CapabilityLiarGamer,
+                       "exposes a NO-OP issuer_history_reset to claim the fork row for free"),
+                      (ForeignVocabularyGate,
+                       "customer-keyed logic behind foreign reason codes + normalize_rule")):
+        c = score(cls)
+        s7 = c["results"]["S7_ISSUER_HISTORY_FORK"]
+        print(f"  {short(c['name']):<9} {c['passed']}/{c['total']}  {note}")
+        print(f"            S7: {s7['detail']}")
 
     ok, tot = conformance(ScopedTokenBaseline)
     print(f"\nBaseline conformance (separate from the composition score): {ok}/{tot}")

@@ -2,9 +2,10 @@
 """
 CLAIM-30 REPRO — the two guards under test.
 
-BaselineGuard  = what most teams actually ship today: RBAC allowlist, a valid
-                 scoped token, per-call permission check, rate limit.
-                 It judges each call ON ITS OWN. That is the whole point.
+BaselineGuard  = a verified-principal, scoped-token, per-call authorization
+                 baseline with a rate limit. No roles, no role-permission
+                 mapping; not presented as RBAC and not a measurement of
+                 common practice. It judges each call ON ITS OWN.
 
 PurposeGate    = Keniel's mechanism (CLAIM-29 PurposeEnvelope + CLAIM-30
                  sequence composition). It judges a call against the PURPOSE
@@ -64,10 +65,10 @@ class Fact:
 # ------------------------------------------------------------ baseline guard
 
 class BaselineGuard:
-    """Realistic per-call policy enforcement. Not a strawman.
+    """Per-call policy enforcement. No roles, no role-permission mapping.
 
-    Checks: token validity, tool in scope, per-call RBAC, rate limit.
-    Judges each call independently — which is exactly how RBAC works.
+    Checks: session validity, tool in granted scope, rate limit.
+    Judges each call independently, with no memory between calls.
     """
 
     def __init__(self, grant: Grant, rate_limit: int = 20):
@@ -80,10 +81,10 @@ class BaselineGuard:
         if not self.grant.principal_is_verified:
             return {"allow": False, "rule": "AUTH", "why": "no valid session"}
         if tool not in self.grant.scope:
-            return {"allow": False, "rule": "RBAC", "why": f"{tool} not in scope"}
+            return {"allow": False, "rule": "SCOPE_DENY", "why": f"{tool} not in scope"}
         if self.calls > self.rate_limit:
             return {"allow": False, "rule": "RATE", "why": "rate limit exceeded"}
-        return {"allow": True, "rule": "RBAC", "why": f"{tool} permitted for role"}
+        return {"allow": True, "rule": "PER_CALL_SCOPE", "why": f"{tool} permitted by scope"}
 
 
 # -------------------------------------------------------------- purpose gate
@@ -450,13 +451,47 @@ class ExternalWitness:
         self._observed.setdefault(key, []).append(action_class)
         self._heads[key] = head_hash
 
-    def check_claimed_prior(self, key: str, claimed_prior: list[str]) -> dict:
+    def last_sequence(self, key: str) -> int:
+        return len(self._observed.get(key, []))
+
+    def check_claimed_prior(self, key: str, claimed_prior: list[str],
+                            claimed_head: str | None = "__unset__",
+                            claimed_sequence: int | None = None) -> dict:
         """Reject if the issuer presents a history that is not what the witness saw.
 
         That is the fork: two heads for the same key; the issuer reveals the
         empty/clean one while the witness already holds the mutation head.
         """
         observed = self.observed_history(key)
+
+        # Strongest check first: does the issuer's next receipt actually extend
+        # the head this witness last accepted? Action-class equality can be
+        # coincidental; head continuity cannot.
+        if claimed_head != "__unset__":
+            expected_head = self.last_head(key)
+            if claimed_head != expected_head:
+                return {
+                    "ok": False,
+                    "rule": "W1_FORK",
+                    "why": (
+                        f"issuer presents previous_head={claimed_head} for key "
+                        f"'{key}', but the witness last accepted "
+                        f"{expected_head}. The new receipt does not extend the "
+                        "witnessed head, so this is a different chain."
+                    ),
+                }
+            if (claimed_sequence is not None
+                    and claimed_sequence != self.last_sequence(key)):
+                return {
+                    "ok": False,
+                    "rule": "W1_FORK",
+                    "why": (
+                        f"issuer presents sequence_number={claimed_sequence} for "
+                        f"key '{key}', witness expected "
+                        f"{self.last_sequence(key)}."
+                    ),
+                }
+
         if claimed_prior != observed:
             return {
                 "ok": False,
@@ -536,7 +571,13 @@ class ForkingCustomerGate(CustomerGate):
             and decision["allow"]
             and customer is not None
         ):
-            w = self.witness.check_claimed_prior(customer, presented_prior)
+            w = self.witness.check_claimed_prior(
+                customer, presented_prior,
+                claimed_head=self.ledger.head(customer)
+                if hasattr(self.ledger, 'head') else '__unset__',
+                claimed_sequence=self.ledger.seq(customer)
+                if hasattr(self.ledger, 'seq') else None,
+            )
             if not w["ok"]:
                 decision = {
                     "allow": False,

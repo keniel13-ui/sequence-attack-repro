@@ -11,6 +11,10 @@ def loose(factory):
         impl, blocked_at, first = factory(), None, None
         for si, sess in enumerate(sc.sessions):
             g = Grant(sess.principal, sess.purpose, sess.verified_via, sess.scope)
+            if (si > 0
+                    and getattr(sc, "attack_model", None) == "issuer_history_fork"
+                    and hasattr(impl, "issuer_history_reset")):
+                impl.issuer_history_reset()   # the original scorer forked here too
             s = impl.new_session(g)
             for ci, call in enumerate(sess.calls):
                 d = s.check(call.tool, call.args)
