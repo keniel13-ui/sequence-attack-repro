@@ -99,7 +99,9 @@ On block, JSON receipt with grant, prior action classes, decision, why, and stab
 
 ## Background
 
-Related earlier essay (lineage, not this scorecard): [CLAIM-30 on DEV](https://dev.to/kenielzep97/every-step-was-allowed-the-sequence-was-the-attack-ai-memory-judgment-claim-30-4ehc)
+**Write-up (live):** [Catching the Attack Was Not the Same as Detecting the Sequence](https://dev.to/kenielzep97/catching-the-attack-was-not-the-same-as-detecting-the-sequence-1gik) (~9 min)
+
+Earlier lineage essay: [CLAIM-30 on DEV](https://dev.to/kenielzep97/every-step-was-allowed-the-sequence-was-the-attack-ai-memory-judgment-claim-30-4ehc)
 
 Historical vessel verify receipts (pre-chain digests): [`archive/verify/`](archive/verify/).
 
