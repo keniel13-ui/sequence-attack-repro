@@ -1,16 +1,26 @@
 # sequence-attack-repro
 
+[![suite](https://github.com/keniel13-ui/sequence-attack-repro/actions/workflows/suite.yml/badge.svg)](https://github.com/keniel13-ui/sequence-attack-repro/actions/workflows/suite.yml)
+
 **Every step can pass a real per-call guardrail. The sequence can still be account takeover.**
 
 A **proposed composition suite** for one failure family: sequence-composition attacks on agent authorization. Not an industry standard. Not a product claim. A small, open, runnable ladder with deterministic verdicts, content hashes, and dated next-hole predictions.
 
+## 30 seconds — same card CI runs
+
 ```bash
-python3 repro.py         # full ladder A→I (named runs + receipts)
-python3 adapter.py       # strict scorecard + adversarial checks + conformance
-python3 loose_replay.py  # historical loose scorer vs strict (reproducible)
+git clone https://github.com/keniel13-ui/sequence-attack-repro
+cd sequence-attack-repro
+python3 adapter.py    # strict scorecard + gamers + conformance
+python3 ci_check.py   # fails if scores regress (what GitHub Actions runs)
 ```
 
 No install. No network. No model. Stdlib only.
+
+```bash
+python3 repro.py         # full ladder A→I (named runs + receipts)
+python3 loose_replay.py  # historical loose scorer vs strict (reproducible)
+```
 
 ## What this is (and is not)
 

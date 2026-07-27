@@ -1,0 +1,33 @@
+# Composition suite — clone the same way a stranger would.
+# Green badge = the public scorecard still holds.
+name: suite
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  scorecard:
+    name: scorecard + composition claim
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Ladder (repro.py)
+        run: python3 repro.py
+
+      - name: Scorecard (adapter.py)
+        run: python3 adapter.py
+
+      - name: Loose vs strict replay
+        run: python3 loose_replay.py
+
+      - name: CI assertions (scores + Run D)
+        run: python3 ci_check.py
