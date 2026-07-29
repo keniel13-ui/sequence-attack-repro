@@ -26,7 +26,7 @@ ATTACK   admin:history.reset.shared reaches BOTH stores
          ALLOW send_password_reset  — takeover completes
 ```
 
-Shared-reset receipt: `ffd8b02d12ee4901a88e1990c1ccb6e37ac1a3dfaf65867589c18b8e918f6533`
+Shared-reset receipt: `9d10426c725397b3fbf7348423e74b7d6bbb3cb30c4b0344b3b38b543586aea6`
 (deterministic across runs)
 
 The only variable between the two traces is the write reach of the reset
@@ -49,3 +49,15 @@ it does not claim any vendor fails.
 
 Run J is a named experimental run, **not an S8 scorecard row**. The public S1–S7
 denominator is unchanged until a separate scoring attack is preregistered.
+
+## Independent recheck hardening
+
+The first implementation in `9566622` produced the same control and attack
+outcomes, but used separate reset functions and checked histories more strongly
+than heads. The independent recheck replaced those paths with one reset
+primitive whose only experimental parameter is witness write reach. The frozen
+checks now assert issuer and witness histories **and** heads before/after reset.
+
+That receipt-schema hardening changed the reset digest from the historical
+`ffd8b02d…` to the current `9d10426c…`. It did not change the preregistration,
+grant, trace, scorecard denominator, or outcome.

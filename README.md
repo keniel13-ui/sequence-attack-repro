@@ -13,12 +13,14 @@ git clone https://github.com/keniel13-ui/sequence-attack-repro
 cd sequence-attack-repro
 python3 adapter.py    # strict scorecard + gamers + conformance
 python3 ci_check.py   # fails if scores regress (what GitHub Actions runs)
+python3 run_j.py      # preregistered shared-reset witness boundary
 ```
 
 No install. No network. No model. Stdlib only.
 
 ```bash
 python3 repro.py         # full ladder A→I (named runs + receipts)
+python3 run_j.py         # separate Prediction 11 v2 experiment
 python3 loose_replay.py  # historical loose scorer vs strict (reproducible)
 ```
 
@@ -27,7 +29,7 @@ python3 loose_replay.py  # historical loose scorer vs strict (reproducible)
 | It is | It is not |
 |---|---|
 | A proposed open suite for **composition** attacks | *The* industry benchmark |
-| Nine named runs (A–I) + seven scored scenarios (S1–S7) | A test of injection, jailbreaks, or exfil |
+| Nine ladder runs (A–I), preregistered Run J, and seven scored scenarios (S1–S7) | A test of injection, jailbreaks, or exfil |
 | Deterministic allow/block + `chain_sha256` receipts | Proof that vendors fail (not scored against them yet) |
 | A scope ladder with pre-registered predictions 10 & 11 | A claim that composition security is “solved” |
 
@@ -46,10 +48,11 @@ Calibrated invitation: **run it, score your gate, try to break predictions 10 an
 | **G** | Same split with history on the **resource** → **BLOCK** across sessions |
 | **H** | Mutation on `contact_77`, recovery on `auth_77` → resource-key **takeover**; customer-key **BLOCK** — credit: ANP2 |
 | **I** | Self-authored chain **forks** empty prior → takeover; **ExternalWitness** → **W1_FORK** |
+| **J** | Issuer-only reset → witness blocks; one shared reset capability clears both stores → takeover |
 
 **Run D is the original claim.** Composition when no single step is out of policy.
 
-**F→I is the scope ladder:** session → resource → customer → out-of-issuer witness. Pre-registration of the next predicted holes: [`PREREG_COMPOSITION_LADDER_2026-07-26.md`](PREREG_COMPOSITION_LADDER_2026-07-26.md).
+**F→I is the scope ladder:** session → resource → customer → out-of-issuer witness. **Run J tests the terminal boundary:** “outside” is not enough when the same write capability can reset both histories. Pre-registration: [`PREREG_COMPOSITION_LADDER_2026-07-26.md`](PREREG_COMPOSITION_LADDER_2026-07-26.md) and [`RUN_J_SHARED_RESET_PREREG_2026-07-28.md`](RUN_J_SHARED_RESET_PREREG_2026-07-28.md). Result: [`RUN_J_RESULT_2026-07-28.md`](RUN_J_RESULT_2026-07-28.md).
 
 ## Scorecard (`adapter.py`)
 
@@ -103,6 +106,7 @@ On block, JSON receipt with grant, prior action classes, decision, why, and stab
 - Simulation — not wired into a production agent framework
 - Sequence rule is currently **one hardcoded pair** (identity mutation → credential recovery)
 - Ledgers and the external witness are in-process memory (not multi-host durable state)
+- Run J confirms the witness fails when one modeled administrative capability can clear both histories. It tests the write-authority boundary; it does not claim every production witness shares that capability.
 - **S7 fork is opt-in by construction:** the harness only forks gates that expose `issuer_history_reset`. A third-party gate that withholds that surface is never forked and could show a high score without an external anchor — and also cannot prove its history is not self-authored. S7 tests gates that expose issuer-local state (including both reference purpose gates), not “any 7/7 gate is witness-anchored.”
 - Author conflict: we ship reference gates scored by this suite. Defense: weaknesses listed; customer-keyed fails S7; suite is runnable against other gates via the adapter contract
 - Not a claim that no security product on earth can catch related attacks
@@ -115,4 +119,4 @@ Earlier lineage essay: [CLAIM-30 on DEV](https://dev.to/kenielzep97/every-step-w
 
 Historical vessel verify receipts (pre-chain digests): [`archive/verify/`](archive/verify/).
 
-If this is already solved out of the box by a tool you know, open an issue or comment with the name and how it catches **Run D** (and, if you score the adapter, how you do on **S7**).
+If this is already solved out of the box by a tool you know, open an issue or comment with the name and how it catches **Run D**, how it does on **S7**, and whether its witness remains independently re-fetchable under **Run J**.

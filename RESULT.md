@@ -1,9 +1,10 @@
 # RESULT — proposed composition suite
 
-**Framing:** a **proposed composition suite** (ladder A→I + scorecard S1–S7), not an industry standard. See `README.md` and `PREREG_COMPOSITION_LADDER_2026-07-26.md`.
+**Framing:** a **proposed composition suite** (ladder A→I + separately preregistered Run J + scorecard S1–S7), not an industry standard. See `README.md`, `PREREG_COMPOSITION_LADDER_2026-07-26.md`, and `RUN_J_SHARED_RESET_PREREG_2026-07-28.md`.
 
 ```bash
 python3 repro.py      # ladder + receipts
+python3 run_j.py      # Prediction 11 v2 shared-reset experiment
 python3 adapter.py    # scorecard (strict) + adversarial checks + conformance
 python3 loose_replay.py   # historical loose scorer vs strict (reproducible)
 ```
@@ -74,7 +75,27 @@ RUN F  session split                      -> takeover (session-scoped R4 blind)
 RUN G  resource-keyed history             -> BLOCK across sessions
 RUN H  resource split / customer key      -> resource takeover; customer BLOCK
 RUN I  fork alone / external witness      -> takeover alone; W1_FORK with witness
+RUN J  issuer-only / shared reset          -> W1_FORK control; takeover under shared write reach
 ```
+
+### Run J — Prediction 11 v2
+
+The preregistration was frozen at
+`8732e865a1f52b5d490f46b046122c12838929c49daf7c5fdf999057d811904a`
+before implementation.
+
+- Control: clear issuer history only, keep witness → `BLOCK / W1_FORK`
+- Attack: one capability clears issuer and witness → recovery `ALLOW`
+- Current deterministic reset receipt:
+  `9d10426c725397b3fbf7348423e74b7d6bbb3cb30c4b0344b3b38b543586aea6`
+
+Outcome: **Prediction 11 v2 confirmed in this simulation.** Independent key
+material is not sufficient when the same write capability can rewrite both
+histories. Full boundary and independent-recheck note:
+`RUN_J_RESULT_2026-07-28.md`.
+
+Run J remains separate from the scorecard. It does not create S8 or change the
+S1–S7 denominator.
 
 ### Receipt digests (content fields; `decided_at` is after the hash)
 
@@ -98,5 +119,6 @@ Older verify notes under `archive/verify/` may cite pre-chain digests (e.g. `726
 5. Author conflict — we ship reference gates; customer-keyed fails S7 in public  
 6. R4 can block forever after one mutation without a reauthorization window  
 7. No concurrency / atomic compare-and-append scenario yet  
+8. Run J models shared reset authority in-process; it does not establish how a production witness should authenticate, replicate, or survive suppression
 
 Predictions 10 & 11: `PREREG_COMPOSITION_LADDER_2026-07-26.md` (original + dated v2 addendum).

@@ -1,5 +1,5 @@
 # Composition suite — clone the same way a stranger would.
-# Green badge = the public scorecard still holds.
+# Green badge = the public scorecard and preregistered boundary tests still hold.
 name: suite
 
 on:
@@ -10,7 +10,7 @@ on:
 
 jobs:
   scorecard:
-    name: scorecard + composition claim
+    name: scorecard + composition claims
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +22,9 @@ jobs:
 
       - name: Ladder (repro.py)
         run: python3 repro.py
+
+      - name: Run J (shared-reset witness boundary)
+        run: python3 run_j.py
 
       - name: Scorecard (adapter.py)
         run: python3 adapter.py

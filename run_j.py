@@ -35,6 +35,7 @@ from gates import (CustomerLedger, ExternalWitness, ForkingCustomerGate, Grant,
 
 RISK_KEY = "cust_77"
 CAPABILITY = "admin:history.reset.shared"
+ISSUER_ONLY_CAPABILITY = "admin:history.reset.issuer_only"
 
 GRANT = dict(principal="caller_77", purpose="account_recovery",
              verified_via="callback_verified",
@@ -59,32 +60,37 @@ def snapshot(ledger: CustomerLedger, witness: ExternalWitness) -> dict:
     }
 
 
-def shared_reset(ledger: CustomerLedger, witness: ExternalWitness) -> dict:
-    """One administrative capability with write reach over BOTH stores.
+def reset_history(ledger: CustomerLedger, witness: ExternalWitness,
+                  reaches_witness: bool) -> dict:
+    """Exercise the same reset primitive with one variable: witness reach.
 
-    This models the threat, it does not assert that a real administrator holds
-    it. The receipt records exactly what the harness cleared.
+    The issuer store is always cleared. The control cannot reach the witness;
+    the attack can. This models the threat, it does not assert that a real
+    administrator holds either capability. The receipt records exactly what
+    the harness cleared.
     """
     before = snapshot(ledger, witness)
 
-    for store, attrs in ((ledger, ("_by_customer", "_heads", "_seqs")),
-                         (witness, ("_observed", "_heads"))):
+    stores = [(ledger, ("_by_customer", "_heads", "_seqs"))]
+    if reaches_witness:
+        stores.append((witness, ("_observed", "_heads")))
+    for store, attrs in stores:
         for attr in attrs:
             d = getattr(store, attr, None)
             if isinstance(d, dict):
                 d.pop(RISK_KEY, None)
 
     after = snapshot(ledger, witness)
-    record = {"capability": CAPABILITY, "risk_key": RISK_KEY,
-              "before": before, "after": after}
+    record = {
+        "capability": CAPABILITY if reaches_witness else ISSUER_ONLY_CAPABILITY,
+        "write_reach": ["issuer", "witness"] if reaches_witness else ["issuer"],
+        "risk_key": RISK_KEY,
+        "before": before,
+        "after": after,
+    }
     blob = json.dumps(record, sort_keys=True, separators=(",", ":"))
     record["reset_sha256"] = hashlib.sha256(blob.encode()).hexdigest()
     return record
-
-
-def issuer_only_reset(witness: ExternalWitness) -> CustomerLedger:
-    """Control: the issuer's own store is replaced; the witness is not reachable."""
-    return CustomerLedger()
 
 
 def mutate(ledger, witness):
@@ -116,15 +122,13 @@ def trace(label: str, shared: bool) -> dict:
     print(f"         issuer saw {observed['issuer_history']} · "
           f"witness saw {observed['witness_history']}")
 
+    receipt = reset_history(ledger, witness, reaches_witness=shared)
     if shared:
-        receipt = shared_reset(ledger, witness)
         print(f"\n  CAPABILITY {CAPABILITY} — reaches BOTH stores")
         print("  " + json.dumps(receipt, indent=2).replace("\n", "\n  "))
     else:
-        receipt = None
-        ledger = issuer_only_reset(witness)
         print("\n  issuer-only reset — witness NOT reachable")
-        s = snapshot(ledger, witness)
+        s = receipt["after"]
         print(f"         issuer now {s['issuer_history']} · "
               f"witness still {s['witness_history']}")
 
@@ -134,7 +138,8 @@ def trace(label: str, shared: bool) -> dict:
     if not r["allow"]:
         print(f"         {r['why'][:150]}")
     return {"mutation": m, "recovery": r, "reset_receipt": receipt,
-            "observed_after_mutation": observed}
+            "observed_after_mutation": observed,
+            "observed_after_reset": receipt["after"]}
 
 
 def main() -> int:
@@ -152,14 +157,24 @@ def main() -> int:
         ("1 both mutations allowed",
          control["mutation"]["allow"] and attack["mutation"]["allow"]),
         ("2 control reset leaves witness intact",
-         bool(control["observed_after_mutation"]["witness_history"])),
+         not control["observed_after_reset"]["issuer_history"]
+         and control["observed_after_reset"]["issuer_head"] is None
+         and (control["observed_after_reset"]["witness_history"]
+              == control["observed_after_mutation"]["witness_history"])
+         and (control["observed_after_reset"]["witness_head"]
+              == control["observed_after_mutation"]["witness_head"])),
         ("3 control recovery blocks at W1_FORK",
          (not control["recovery"]["allow"])
          and control["recovery"]["rule"] == "W1_FORK"),
         ("4 shared-reset receipt: witness non-empty before, both empty after",
-         bool(attack["reset_receipt"]["before"]["witness_history"])
+         bool(attack["reset_receipt"]["before"]["issuer_history"])
+         and attack["reset_receipt"]["before"]["issuer_head"] is not None
+         and bool(attack["reset_receipt"]["before"]["witness_history"])
+         and attack["reset_receipt"]["before"]["witness_head"] is not None
          and not attack["reset_receipt"]["after"]["witness_history"]
-         and not attack["reset_receipt"]["after"]["issuer_history"]),
+         and attack["reset_receipt"]["after"]["witness_head"] is None
+         and not attack["reset_receipt"]["after"]["issuer_history"]
+         and attack["reset_receipt"]["after"]["issuer_head"] is None),
         ("5 attack recovery ALLOWED (takeover completes)",
          attack["recovery"]["allow"]),
     ]
