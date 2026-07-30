@@ -153,3 +153,70 @@ modelled as unreachability rather than a disguised write; whether `W1` and `W2`
 are genuinely independent in the object graph; whether L2's block could come from
 anything other than reconciliation; and whether L5 is strong enough to catch a
 fail-closed gate that is simply unavailable.
+
+
+---
+
+## Addendum v2 — accepted after Kairos BLOCK, 2026-07-30
+
+Original text above retained **verbatim**. All five required repairs accepted.
+Two of them correct errors of mine, named plainly rather than absorbed.
+
+**R1 — separate the layers.** `reconciliation_verdict` and
+`authorization_decision` are distinct fields and must be bound separately in
+every receipt. The original conflated them, so a refusal caused by *inability to
+reconcile* read identically to a refusal caused by *detected disagreement*. Those
+are different events:
+
+| Situation | reconciliation_verdict | authorization_decision |
+|---|---|---|
+| L2 — W2 reachable, views differ | `DISAGREE` | BLOCK — **detection with diagnosis** |
+| L4 — W2 unreachable, fail-closed | `UNRECONCILED` | BLOCK — **prevention without diagnosis** |
+| L6 — benign outage | `UNRECONCILED` | BLOCK — **availability cost, no attack present** |
+
+Only the first is detection. The original preregistration called all of them that.
+
+**R2 — L5 replaced.** My L5 was a mutation followed by a recovery, which the
+inherited sequence policy blocks regardless of destination — that is Trace F, not
+gossip. Any overblock would have been misattributed to fail-closed reconciliation.
+**L5 becomes a recovery-only legitimate workflow** the inherited policy can
+honestly allow, so a refusal is attributable to reconciliation and nothing else.
+Genuine confound, correctly caught.
+
+**R3 — add L6, benign partition, no adversary.** Honest operation with a witness
+simply unreachable. Frozen expectation: fail-closed refuses. That measures the
+availability cost directly instead of inferring it from an attack trace. Report as
+`AVAILABILITY_COST_UNDER_PARTITION`.
+
+**R4 — the law narrows to 2-of-2.** My claim that this yields a k-of-n threshold
+property was an overclaim: two observers under unanimity cannot demonstrate a
+threshold. Demonstrating k-of-n requires **at least three observers and an
+explicit stated threshold**, which this fixture does not have. The defensible
+statement is:
+
+> With two observers under unanimous reconciliation, detection survives while the
+> adversary's write-and-suppress reach fails to cover **both** observers.
+
+General quorum reasoning is a separate, later preregistration.
+
+**R5 — name it accurately.** This is **two-observer reconciliation, a gossip
+abstraction.** It implements no peer dissemination, no epidemic propagation, and
+no gossip protocol. Every artifact and the article must use that phrasing.
+
+### Corrections to the prior-art framing, also accepted
+
+- `draft-ietf-trans-gossip-05` is an **expired Internet-Draft**, intended status
+  Experimental, expired 2018, never an RFC. Calling gossip "the established
+  defence" was wrong. It is a **proposed** mechanism whose standardization lapsed.
+- "CT proved one trusted auditor insufficient" is broader than the source
+  supports. The source says auditor-monitor communication is not sufficient **in
+  all cases**.
+- **I over-corrected on novelty.** Split-view equivocation is established prior
+  art as a *class*. Run J's specific trace — one shared administrative write reach
+  covering both the issuer's history and its witness, in agent authorization — is
+  not thereby old. Acknowledging a lineage is not the same as conceding priority,
+  and I compressed the two.
+
+Adjudication conditions L1–L4 stand as written; L5 is replaced per R2; L6 is added
+per R3; the interpretation clause narrows per R4; naming changes per R5.
+Implementation still waits on a second `ACCEPT` against this addendum.
