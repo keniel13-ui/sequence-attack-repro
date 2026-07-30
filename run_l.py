@@ -445,7 +445,7 @@ def main() -> int:
          and R["L2b"]["rule"] == "G1_GOSSIP_DISAGREE"),
         ("L3 reach covering BOTH observers is NOT repaired",
          R["L3"]["authorization_decision"] == "ALLOW"),
-        ("L4 fail_OPEN defeated by partition alone (no write to W2)",
+        ("L4 fail_OPEN defeated at T1 when W2 is partitioned (no write to W2)",
          R["L4o"]["authorization_decision"] == "ALLOW"),
         ("L4 fail_CLOSED refuses, without diagnosis",
          R["L4c"]["authorization_decision"] == "BLOCK"
