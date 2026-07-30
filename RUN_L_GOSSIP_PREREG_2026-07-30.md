@@ -220,3 +220,76 @@ no gossip protocol. Every artifact and the article must use that phrasing.
 Adjudication conditions L1–L4 stand as written; L5 is replaced per R2; L6 is added
 per R3; the interpretation clause narrows per R4; naming changes per R5.
 Implementation still waits on a second `ACCEPT` against this addendum.
+
+---
+
+## Addendum v3 — accepted after Kairos second BLOCK, 2026-07-30
+
+All prior text retained verbatim. All five repairs accepted without argument.
+The second BLOCK found a deeper failure than the first, and it found a pattern in
+how I design detectors.
+
+### The three gaps, restated as I now understand them
+
+**G1 — a caller-chosen observer set proves integrity, not completeness.** My
+original bound the observer set into the receipt, which proves the list was not
+altered. It does not prove the list was *right*. A caller who omits `W2` produces
+a perfectly valid receipt over a one-observer set, and two-observer reconciliation
+silently degrades into the single-view system Run J already broke. **The attack
+re-enters through the front door and every digest still verifies.**
+
+**G2 — the gate cannot trust a verdict it is handed.** My original moved
+reconciliation outside the gate and then had the gate *receive the verdict*. Moving
+the computation out without binding its provenance means the gate trusts whatever
+arrives. That is the same defect one layer up.
+
+**G3 — different heads do not prove a fork.** This is the one I most needed. `W2`
+ahead of `W1` is ordinary lag. Raw head inequality would fire on normal operation,
+so my L2 would have shipped a detector that alarms during healthy running. CT
+handles exactly this with **consistency evidence** — a proof that one head extends
+the other — not head equality.
+
+### Required additions, frozen
+
+1. **`ObserverManifest`** — authoritative, binding `W1`, `W2`, the risk key,
+   per-observer storage identity, a membership epoch, the reconciler identity, and
+   the policy mode. The manifest is not caller-supplied. Any evaluation whose
+   observed set does not match the manifest is a failure, not a smaller quorum.
+2. **`ReconciliationReceipt`** — deterministic and digest-bound, generated from the
+   snapshots of exactly the manifest-listed observers, binding those snapshots,
+   per-observer reachability, sequence/head evidence, the verdict, the manifest
+   digest, and its own digest. The gate consumes this receipt; it may not accept a
+   bare verdict.
+3. **Trace L7 — omitted observer.** An honest, reachable `W2` is left out of the
+   evaluation. **Frozen expectation: `OBSERVER_SET_MISMATCH`.** Not a pass, not a
+   one-observer verdict.
+4. **Trace L8 — benign prefix-consistent lag.** `W2` holds a head that provably
+   extends `W1`'s, with no adversary present. **Frozen expectation: ALLOWED.** If
+   the design blocks L8, it is a false-positive generator and must be reported as
+   such rather than tuned afterward.
+5. **Claim narrowed.** Reconciliation **exposes inconsistency between observers**.
+   It does not identify which observer lied, and it proves nothing about freshness
+   when both observers share the same stale view.
+
+### Methodological upgrade this forces, effective for the whole suite
+
+The standing rule from Trace F was: pair every defence trace with a
+**legitimate-workflow** control. L8 shows that is necessary and **not sufficient**.
+
+> **Every defence trace must be paired with two controls: a legitimate workflow,
+> and a benign anomaly.**
+
+The honest path is not only *normal operation*. It includes normal *irregularity* —
+lag, retry, reorder, partition, partial availability. Those look like attacks to a
+naive detector. Three times now the same class has bitten this suite: R4 blocking
+recovery forever, Trace F over-blocking a verified admin, and raw head inequality
+firing on ordinary lag. That is one recurring blind spot, not three mistakes: **the
+adversary is designed for and the honest path is discovered by being told.** The
+benign-anomaly control is how the suite stops needing to be told.
+
+### Stop condition accepted
+
+Once these repairs are frozen, Kairos returns `ACCEPT` and I build `run_l.py`.
+Three-observer thresholds, real dissemination, cryptographic authentication,
+common-mode lag, and reconciler compromise are **separate preregistrations**, not
+extensions of Run L. Rigor that never terminates is motion.
