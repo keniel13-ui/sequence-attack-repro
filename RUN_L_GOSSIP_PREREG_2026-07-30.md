@@ -293,3 +293,39 @@ Once these repairs are frozen, Kairos returns `ACCEPT` and I build `run_l.py`.
 Three-observer thresholds, real dissemination, cryptographic authentication,
 common-mode lag, and reconciler compromise are **separate preregistrations**, not
 extensions of Run L. Rigor that never terminates is motion.
+
+---
+
+## Addendum v4 — G2 authenticity binding after cold B1–B3, 2026-07-30
+
+All prior text retained. This addendum is forced by live attack, not by appetite for more crypto.
+
+### What the attack proved
+
+On implementation candidate `edc9106`, independent cold attack (Aethar) reproduced:
+
+- **B1** — L1 blocked on composition (`R4_SEQUENCE`) with recon `CONSISTENT`; headline claimed issuer suppression. Fixture, not recon.
+- **B2** — caller-constructed one-observer `ObserverManifest` → valid digests → `ALLOW` while unconsulted W2 held the mutation. G1 unfixed: naming a class is not registry authority.
+- **B3** — flip `DISAGREE`→`CONSISTENT`, recompute public `receipt_digest` → `ALLOW`. G2 unfixed: self-digest is integrity of bytes, not authenticity of provenance.
+
+### Scope decision vs v3 stop condition
+
+v3 deferred "cryptographic authentication" as a separate prereg. That stop remains correct for **full** auth (KMS, public keys, rotation, reconciler compromise). It does **not** permit shipping a receipt the gate cannot authenticate at all. G2's text — "the gate cannot trust a verdict it is handed" — requires a minimum binding. Public self-digest alone failed that requirement under B3.
+
+### Frozen additions (narrow)
+
+1. **Registry-resolved membership.** `ObserverRegistry` is the sole constructor of who counts for `(risk_key, epoch)`. `reconcile` takes the registry, not a free-form caller manifest. Attempted evaluation of a proper subset of registered members → `OBSERVER_SET_MISMATCH` (L7).
+2. **Receipt MAC.** Schema `run_l_reconciliation_receipt_v2`: `receipt_digest` (integrity) + `receipt_mac` (HMAC-SHA256 under an experiment-local reconciler key shared with the gate). Gate rejects missing, wrong, or stale MAC as `R_RECEIPT_UNAUTHENTIC` before applying any recon verdict.
+3. **L1 fixture truth.** L1 must suppress the issuer claim while observers retain history; expected gate rule is recon-driven (`G1_GOSSIP_DISAGREE`), not composition alone.
+
+### Explicit residual
+
+Registry **custody** is root of trust. An adversary who owns the registry object and registers a one-observer world is outside this experiment's threat model the same way a stolen Employee bot token is outside Stage 1's owner-bind claim. Named, not closed.
+
+### Still separate preregs (unchanged)
+
+Three-observer thresholds, real dissemination, production key management / public-key auth, common-mode lag, reconciler compromise.
+
+### Seats for this repair
+
+Opus named the repair (PHASE 90) and was filtered mid-implementation. Aethar implemented under leadership order and first-pass re-attacked. **Formal PASS still requires an independent breaker (Kairos or Opus) who did not author the repair.**

@@ -6,6 +6,12 @@ A gossip ABSTRACTION. It implements no peer dissemination and is not gossip.
 Frozen before implementation in RUN_L_GOSSIP_PREREG_2026-07-30.md (addendum v3,
 sha256 ab70a7a7396f07e2592e5c4d…). Accepted by Kairos before this file existed.
 
+Repair after cold B1–B3 on edc9106 (Aethar PHASE 170; Opus self-diagnosis PHASE 90):
+  - Membership is registry-resolved. A caller cannot construct who counts.
+  - Receipts carry an HMAC under the reconciler key. Self-digest alone is integrity
+    of bytes, not authenticity of provenance (G2 / B3).
+  - L1 actually suppresses the issuer claim; it is not a composition-only path.
+
 Run J: a single witness fails when one capability suppresses its complete view.
 Run L: does a second, independent observer repair that — and what does it cost?
 
@@ -22,6 +28,7 @@ Run:  python3 run_l.py
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 
 READ = "READ"
@@ -29,11 +36,21 @@ MUTATION = "IDENTITY_MUTATION"
 RECOVERY = "CREDENTIAL_RECOVERY"
 RISK_KEY = "cust_77"
 
+# Experiment-local reconciler key. Not a production KMS. Exists so the gate can
+# verify provenance of a ReconciliationReceipt. Full key management / public-key
+# auth remains a separate prereg; this is the minimum authenticity binding G2
+# requires (self-digest alone is forgeable — B3).
+RECONCILER_KEY = b"run_l_reconciler_key_v1_experiment_only"
+
 
 def digest(obj) -> str:
     return hashlib.sha256(
         json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
+
+
+def mac_hex(body_digest: str, key: bytes = RECONCILER_KEY) -> str:
+    return hmac.new(key, body_digest.encode(), hashlib.sha256).hexdigest()
 
 
 # --------------------------------------------------------------- observers
@@ -71,23 +88,23 @@ class Observer:
         self.reachable = False
 
 
-# ----------------------------------------------------- authoritative manifest
+# --------------------------------------------- authoritative membership
 
 class ObserverManifest:
-    """Membership is AUTHORITATIVE. A caller cannot choose who counts.
+    """Immutable membership record produced ONLY by ObserverRegistry.
 
-    Run L's first BLOCK: a digest over a caller-supplied list proves integrity,
-    not completeness. Omit W2 and two-observer reconciliation silently becomes
-    the one-observer system Run J already broke — with every digest still valid.
+    A digest over a caller-chosen list proves integrity, not completeness.
+    Naming this class is not enough — construction must be registry-only.
     """
 
-    def __init__(self, observers, risk_key, epoch, reconciler_identity, policy_mode):
-        self.members = [o.name for o in observers]
-        self.storage_identities = {o.name: o.storage_identity for o in observers}
+    def __init__(self, members, storage_identities, risk_key, epoch,
+                 reconciler_identity, policy_mode):
+        self.members = list(members)
+        self.storage_identities = dict(storage_identities)
         self.risk_key = risk_key
         self.epoch = epoch
         self.reconciler_identity = reconciler_identity
-        self.policy_mode = policy_mode          # fail_open | fail_closed
+        self.policy_mode = policy_mode
 
     def as_record(self) -> dict:
         return {"members": sorted(self.members),
@@ -101,28 +118,107 @@ class ObserverManifest:
         return digest(self.as_record())
 
 
+class ObserverRegistry:
+    """Sole authority for who counts for a (risk_key, epoch).
+
+    Callers may request reconciliation. They may not hand the reconciler a
+    custom membership list and call that two-observer security.
+    """
+
+    def __init__(self):
+        self._slots: dict[tuple[str, int], dict] = {}
+
+    def register(self, risk_key: str, epoch: int, observers: list[Observer],
+                 reconciler_identity: str, policy_mode: str) -> ObserverManifest:
+        key = (risk_key, epoch)
+        if key in self._slots:
+            raise ValueError(f"membership already registered for {key}")
+        names = [o.name for o in observers]
+        if len(names) != len(set(names)):
+            raise ValueError("duplicate observer names")
+        storage = {o.name: o.storage_identity for o in observers}
+        manifest = ObserverManifest(
+            members=names,
+            storage_identities=storage,
+            risk_key=risk_key,
+            epoch=epoch,
+            reconciler_identity=reconciler_identity,
+            policy_mode=policy_mode,
+        )
+        self._slots[key] = {
+            "manifest": manifest,
+            "observers": {o.name: o for o in observers},
+        }
+        return manifest
+
+    def manifest_for(self, risk_key: str, epoch: int) -> ObserverManifest:
+        return self._slots[(risk_key, epoch)]["manifest"]
+
+    def observers_for(self, risk_key: str, epoch: int) -> dict[str, Observer]:
+        return dict(self._slots[(risk_key, epoch)]["observers"])
+
+
 # ------------------------------------------------------------- reconciliation
 
 CONSISTENT = "CONSISTENT"
 DISAGREE = "DISAGREE"
 UNRECONCILED = "UNRECONCILED"
 SET_MISMATCH = "OBSERVER_SET_MISMATCH"
+REGISTRY_MISS = "REGISTRY_MISS"
 
 
-def reconcile(manifest: ObserverManifest, issuer_claim: list[str],
-              evaluated: list[Observer]) -> dict:
-    """Runs OUTSIDE every gate. Produces a digest-bound receipt, not a bare verdict.
+def reconcile(registry: ObserverRegistry, risk_key: str, epoch: int,
+              issuer_claim: list[str],
+              evaluated_names: list[str] | None = None) -> dict:
+    """Runs OUTSIDE every gate. Produces a MAC'd receipt, not a bare verdict.
+
+    Membership is always loaded from the registry. evaluated_names is only the
+    set the caller claims to have consulted — if it is a proper subset of the
+    registered members, that is SET_MISMATCH, not a smaller valid quorum.
 
     Consistency evidence, not head equality: an observer whose log is a PREFIX of
     the issuer's claim is merely lagging, which is benign. An observer holding
     history the issuer is not presenting means the issuer is omitting — a fork.
     """
-    snaps = [o.snapshot() for o in evaluated]
-    evaluated_names = sorted(o.name for o in evaluated)
+    try:
+        manifest = registry.manifest_for(risk_key, epoch)
+        registered = registry.observers_for(risk_key, epoch)
+    except KeyError:
+        body = {
+            "schema": "run_l_reconciliation_receipt_v2",
+            "manifest": None,
+            "manifest_digest": None,
+            "issuer_claim": list(issuer_claim),
+            "observer_snapshots": [],
+            "reconciliation_verdict": REGISTRY_MISS,
+            "why": f"no membership for risk_key={risk_key!r} epoch={epoch}",
+        }
+        return _seal(body)
 
-    if evaluated_names != sorted(manifest.members):
+    if evaluated_names is None:
+        evaluated = [registered[n] for n in sorted(registered)]
+    else:
+        # Unknown names are not silently dropped — they cannot invent members.
+        unknown = sorted(set(evaluated_names) - set(registered))
+        if unknown:
+            body = {
+                "schema": "run_l_reconciliation_receipt_v2",
+                "manifest": manifest.as_record(),
+                "manifest_digest": manifest.digest(),
+                "issuer_claim": list(issuer_claim),
+                "observer_snapshots": [],
+                "reconciliation_verdict": SET_MISMATCH,
+                "why": f"evaluated unknown observers {unknown}; not in registry",
+            }
+            return _seal(body)
+        evaluated = [registered[n] for n in evaluated_names]
+
+    snaps = [o.snapshot() for o in evaluated]
+    evaluated_sorted = sorted(o.name for o in evaluated)
+
+    if evaluated_sorted != sorted(manifest.members):
         verdict, why = SET_MISMATCH, (
-            f"evaluated {evaluated_names} but manifest requires "
+            f"evaluated {evaluated_sorted} but registry manifest requires "
             f"{sorted(manifest.members)}; a smaller set is a failure, not a quorum")
     elif any(not o.reachable for o in evaluated):
         down = [o.name for o in evaluated if not o.reachable]
@@ -140,14 +236,23 @@ def reconcile(manifest: ObserverManifest, issuer_claim: list[str],
                 f"all observers prefix-consistent with the issuer"
                 + (f"; lagging: {behind}" if behind else ""))
 
-    receipt = {"schema": "run_l_reconciliation_receipt_v1",
-               "manifest": manifest.as_record(),
-               "manifest_digest": manifest.digest(),
-               "issuer_claim": list(issuer_claim),
-               "observer_snapshots": snaps,
-               "reconciliation_verdict": verdict,
-               "why": why}
+    body = {
+        "schema": "run_l_reconciliation_receipt_v2",
+        "manifest": manifest.as_record(),
+        "manifest_digest": manifest.digest(),
+        "issuer_claim": list(issuer_claim),
+        "observer_snapshots": snaps,
+        "reconciliation_verdict": verdict,
+        "why": why,
+    }
+    return _seal(body)
+
+
+def _seal(body: dict) -> dict:
+    """Bind integrity (receipt_digest) and authenticity (receipt_mac)."""
+    receipt = dict(body)
     receipt["receipt_digest"] = digest(receipt)
+    receipt["receipt_mac"] = mac_hex(receipt["receipt_digest"])
     return receipt
 
 
@@ -155,20 +260,27 @@ def reconcile(manifest: ObserverManifest, issuer_claim: list[str],
 
 class Gate:
     """Consumes a ReconciliationReceipt. Never computes reconciliation, never
-    accepts a bare verdict, never holds a reference to an observer store."""
+    accepts a bare verdict, never holds a reference to an observer store.
 
-    def __init__(self, policy_mode: str):
+    Verifies both self-digest and reconciler MAC. A flipped verdict with a
+    recomputed public digest fails the MAC (B3).
+    """
+
+    def __init__(self, policy_mode: str, reconciler_key: bytes = RECONCILER_KEY):
         self.policy_mode = policy_mode
+        self.reconciler_key = reconciler_key
 
     def check(self, action_class: str, issuer_claim: list[str], receipt: dict) -> dict:
-        if receipt.get("receipt_digest") != digest(
-                {k: v for k, v in receipt.items() if k != "receipt_digest"}):
+        if not self._mac_ok(receipt):
+            return self._d("BLOCK", "R_RECEIPT_UNAUTHENTIC", receipt,
+                           "reconciliation receipt failed reconciler MAC")
+        if not self._digest_ok(receipt):
             return self._d("BLOCK", "R_RECEIPT_INVALID", receipt,
                            "reconciliation receipt failed its own digest")
 
         v = receipt["reconciliation_verdict"]
-        if v == SET_MISMATCH:
-            return self._d("BLOCK", SET_MISMATCH, receipt, receipt["why"])
+        if v in (SET_MISMATCH, REGISTRY_MISS):
+            return self._d("BLOCK", v, receipt, receipt.get("why", v))
         if v == DISAGREE:
             return self._d("BLOCK", "G1_GOSSIP_DISAGREE", receipt, receipt["why"])
         if v == UNRECONCILED:
@@ -180,6 +292,19 @@ class Gate:
         return self._d(*self._compose(action_class, issuer_claim), receipt,
                        "observers consistent; composition policy applied")
 
+    def _digest_ok(self, receipt: dict) -> bool:
+        body = {k: v for k, v in receipt.items()
+                if k not in ("receipt_digest", "receipt_mac")}
+        return receipt.get("receipt_digest") == digest(body)
+
+    def _mac_ok(self, receipt: dict) -> bool:
+        d = receipt.get("receipt_digest")
+        m = receipt.get("receipt_mac")
+        if not d or not m:
+            return False
+        expected = mac_hex(d, self.reconciler_key)
+        return hmac.compare_digest(m, expected)
+
     @staticmethod
     def _compose(action_class, issuer_claim):
         if action_class == RECOVERY and MUTATION in issuer_claim:
@@ -189,16 +314,19 @@ class Gate:
     @staticmethod
     def _d(decision, rule, receipt, why) -> dict:
         return {"authorization_decision": decision, "rule": rule, "why": why,
-                "reconciliation_verdict": receipt["reconciliation_verdict"],
-                "reconciliation_receipt_digest": receipt["receipt_digest"]}
+                "reconciliation_verdict": receipt.get("reconciliation_verdict"),
+                "reconciliation_receipt_digest": receipt.get("receipt_digest"),
+                "reconciliation_receipt_mac": receipt.get("receipt_mac")}
 
 
 # -------------------------------------------------------------------- traces
 
 def world(policy="fail_closed", epoch=1):
+    """Build a fresh registry-bound observer set for one scenario."""
+    reg = ObserverRegistry()
     w1, w2 = Observer("W1", "store_a"), Observer("W2", "store_b")
-    m = ObserverManifest([w1, w2], RISK_KEY, epoch, "reconciler_0", policy)
-    return w1, w2, m
+    reg.register(RISK_KEY, epoch, [w1, w2], "reconciler_0", policy)
+    return reg, w1, w2, epoch
 
 
 def mutate(issuer: list[str], *observers) -> None:
@@ -213,7 +341,7 @@ def line(c="-", n=78):
 
 def show(label, res):
     print(f"  {res['authorization_decision']:<5} recovery   "
-          f"verdict={res['reconciliation_verdict']:<20} rule={res['rule']}")
+          f"verdict={str(res['reconciliation_verdict']):<20} rule={res['rule']}")
 
 
 def trace(name, headline, policy, build):
@@ -232,8 +360,9 @@ def main() -> int:
     results = {}
 
     def scenario(policy, suppress_w1=False, suppress_w2=False, partition_w2=False,
-                 omit_w2=False, do_mutation=True, lag_w1=False):
-        w1, w2, m = world(policy)
+                 omit_w2=False, do_mutation=True, lag_w1=False,
+                 suppress_issuer_only=False):
+        reg, w1, w2, epoch = world(policy)
         issuer: list[str] = []
         if do_mutation:
             mutate(issuer, w1, w2)
@@ -251,17 +380,19 @@ def main() -> int:
             w2.suppress()
         if partition_w2:
             w2.partition()
-        if suppress_w1 or suppress_w2:      # adversary also suppresses the issuer
+        # T0: issuer claim suppressed; observers still hold truth
+        if suppress_issuer_only:
             issuer_claim = []
-        if suppress_w1 and not (suppress_w2 or partition_w2):
-            pass
-        evaluated = [w1] if omit_w2 else [w1, w2]
-        rec = reconcile(m, issuer_claim, evaluated)
+        # T1/T2: adversary also suppresses the issuer claim with the write
+        if suppress_w1 or suppress_w2:
+            issuer_claim = []
+        evaluated_names = ["W1"] if omit_w2 else None
+        rec = reconcile(reg, RISK_KEY, epoch, issuer_claim,
+                        evaluated_names=evaluated_names)
         return Gate(policy).check(RECOVERY, issuer_claim, rec)
 
     results["L1"] = trace("L1", "T0 issuer suppressed only", "fail_closed",
-                          lambda p: scenario(p))
-    # T0: issuer alone is suppressed; both observers still hold the mutation
+                          lambda p: scenario(p, suppress_issuer_only=True))
     results["L2"] = trace("L2", "T1 issuer + W1 suppressed  (Run J's wall)", "fail_closed",
                           lambda p: scenario(p, suppress_w1=True))
     results["L3"] = trace("L3", "T2 issuer + BOTH observers suppressed", "fail_closed",
@@ -281,12 +412,13 @@ def main() -> int:
 
     print("\n")
     print("=" * 78)
-    print("VERDICT vs RUN_L_GOSSIP_PREREG_2026-07-30.md (addendum v3)")
+    print("VERDICT vs RUN_L_GOSSIP_PREREG_2026-07-30.md (addendum v3 + v4 repair)")
     line("=")
     R = results
     checks = [
-        ("L1 issuer-only suppression caught",
-         R["L1"]["authorization_decision"] == "BLOCK"),
+        ("L1 issuer-only suppression caught by RECON (G1_GOSSIP_DISAGREE)",
+         R["L1"]["authorization_decision"] == "BLOCK"
+         and R["L1"]["rule"] == "G1_GOSSIP_DISAGREE"),
         ("L2 two observers repair Run J's wall (G1_GOSSIP_DISAGREE)",
          R["L2"]["authorization_decision"] == "BLOCK"
          and R["L2"]["rule"] == "G1_GOSSIP_DISAGREE"),
@@ -323,6 +455,10 @@ def main() -> int:
         print("     write to the second observer. Fail-CLOSED is the load-bearing")
         print("     property, not observer count;")
         print("   - and fail-closed carries a measured availability cost (L6).")
+        print()
+        print("  Membership is registry-resolved; receipts are MAC-bound under the")
+        print("  reconciler key. A one-observer caller list and a flipped public")
+        print("  digest no longer produce a valid authorization path.")
         print()
         print("  With two observers under unanimous reconciliation, detection survives")
         print("  while the adversary's write-and-suppress reach fails to cover BOTH.")
