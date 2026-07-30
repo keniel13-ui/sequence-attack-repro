@@ -429,7 +429,7 @@ fec3d891 Preregister Run L gossip             ->  90638b8  run_l.py
 
 **Correction, 2026-07-30.** An earlier version of this note cited `4ce4de5` and
 `edc9106` for the Run L pair. Those are *local* hashes; the Run L history was
-published by cherry-pick, which rewrote them. The public commits are `fec3d89` and
+published by cherry-pick, which rewrote them. The public commits are `fec3d891` and
 `90638b8`. Citing an identifier a reader cannot resolve is the same failure as
 citing a digest nobody can recompute — verify hashes against the public remote, not
 the working copy.
