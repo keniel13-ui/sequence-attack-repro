@@ -408,3 +408,25 @@ trace is void and reports nothing about count. A single-member registry must be 
    against.** It must be rewritten to state both, each scoped to its trace.
 2. The title's "A Second Witness Only Moved the Wall" is licensed only if L-D
    confirms. Otherwise the honest title names the package, not the witness.
+
+---
+
+## PROVENANCE NOTE ON ADDENDUM v5 (added PHASE 100)
+
+**This addendum and its implementing code landed in the same public commit,
+`6605bce`.** The freeze was written and hashed before the ablation was built, but
+**GitHub cannot independently demonstrate that ordering.** Treat v5 as a *disclosed
+pre-specification*, not a publicly proven preregistration.
+
+The earlier freezes do carry public proof of ordering, each in its own commit
+before the corresponding implementation:
+
+```
+010d83f  Preregister Run J shared-reset      ->  9566622  run_j.py
+af60ab5  Preregister Run K capability-closure ->  6220cf1  run_k.py
+4ce4de5  Preregister Run L gossip             ->  edc9106  run_l.py
+```
+
+v5 broke that pattern because the author batched `git add -A`. A `pre-commit` hook
+now refuses any commit containing both a preregistration file and an implementation
+file, so the ordering is enforced rather than remembered.
