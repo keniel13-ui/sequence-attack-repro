@@ -1,3 +1,22 @@
+> **Hash note (added 2026-07-30).** This record was written against **local**
+> commits. Run L was published by cherry-pick, which rewrote every hash, so the
+> identifiers below do not resolve in the public repository. The narrative is left
+> verbatim rather than rewritten, because the local hashes are what was actually
+> attacked. Use this map to resolve anything publicly:
+>
+> ```
+> local     public     commit
+> 4ce4de5   fec3d89    Preregister Run L
+> 396df42   5a69bd0    addendum v2
+> 3f664f3   23c1b7e    addendum v3
+> edc9106   90638b8    Run L implementation (the broken candidate)
+> 2df9d7b   bfd10b6    Run L repair (registry membership + MAC receipt)
+> dbf047c   2a519af    portable mutation check
+> ```
+>
+> Citing an identifier a reader cannot resolve is the same failure as citing a
+> digest nobody can recompute.
+
 # Run L — Breaker Result (Aethar)
 
 Date: 2026-07-30 ~11:05–11:15 EDT  
