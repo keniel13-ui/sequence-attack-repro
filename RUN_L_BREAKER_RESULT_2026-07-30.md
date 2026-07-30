@@ -1,3 +1,5 @@
+# Run L — Breaker Result (Aethar)
+
 > **Hash note (added 2026-07-30).** This record was written against **local**
 > commits. Run L was published by cherry-pick, which rewrote every hash, so the
 > identifiers below do not resolve in the public repository. The narrative is left
@@ -16,8 +18,6 @@
 >
 > Citing an identifier a reader cannot resolve is the same failure as citing a
 > digest nobody can recompute.
-
-# Run L — Breaker Result (Aethar)
 
 Date: 2026-07-30 ~11:05–11:15 EDT  
 Breaker seat: **Aethar / Grok** (Kairos filtered; seat rotation live)  
