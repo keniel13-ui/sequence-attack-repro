@@ -209,3 +209,232 @@ and record what changes the outcome.
 - It does not add an S8 row or change the public S1–S7 denominator.
 - It does not repair or rely on blocked `loop_check.py`.
 - It does not authorize a push or publication.
+
+---
+
+## Addendum v2 — divergence traces after breaker BLOCK
+
+Added: 2026-07-29 EDT, after Opus 5 BLOCK against frozen commit `2964240`
+
+Original preregistration: retained verbatim above
+
+Original SHA-256:
+`9376052b0462e96a1a7a409c2e846f69c13ec466259d0132c7511c39e9ac4523`
+
+Current public floor:
+`0171b1e64b12977dc35c0eb493b0518fe0ea458e`
+
+### Why the original candidate was blocked
+
+In original traces B and C there is one tenant, one principal, and two actions.
+The tenant history and the principal capability closure therefore contain the
+same events in one-to-one correspondence. A closure gate that blocks C has not
+yet demonstrated a different semantic risk object; it may be tenant history
+renamed.
+
+The original first action also had no mechanical effect on the destination the
+second action would use. The prose called the composition dangerous, but the
+fixture did not independently demonstrate that recovery went to the attacker.
+
+Concessions:
+
+- A and B are calibration controls, not findings.
+- C is a non-consultation/calibration control, not the capability-closure
+  finding.
+- Original non-attack control 3 is superseded. Whether a different principal's
+  mutation is safe depends on whether recovery routing is shared by principal
+  or by tenant. Without that routing model, calling it safe was an assumption.
+- The research result must come from divergence traces D and E.
+
+### Mechanical recovery-routing state
+
+Run K must model recovery destination outside every gate. Gates receive facts
+about actions and indexes; they do not decide where recovery goes.
+
+`RecoveryRoutingState` begins with safe destinations and exposes exactly two
+explicit routing topologies:
+
+1. `tenant_shared`
+   - destination key: `tenant_id`;
+   - a destination mutation by one recovery administrator changes the route
+     used by another administrator recovering a customer in that tenant;
+   - recovery reads `tenant_destination[tenant_id]`.
+2. `principal_shared`
+   - destination key: `privileged_identity_id`;
+   - a destination mutation through one tenant changes the route used by the
+     same privileged identity when recovering a customer in another tenant;
+   - recovery reads `principal_destination[privileged_identity_id]`.
+
+The mutation must write the selected routing map. The recovery must read that
+same map. Every trace binds `routing_topology` in its action and decision
+receipts.
+
+A gate-independent `preview_recovery_destination(...)` must resolve the address
+before the recovery decision. If a gate allows the recovery, execution uses that
+resolved address without rewriting it. The experiment may call a trace an
+attack only when the preview equals `attacker@evil.test`.
+
+The two topologies are separate threat profiles. Run K must not imply that one
+field is simultaneously principal-shared and tenant-shared. Which invariant is
+correct depends on the real system's effect-sharing topology.
+
+### Revised status of A, B, and C
+
+Original traces A, B, and C use `tenant_shared` routing, one principal, and one
+tenant.
+
+- A — customer-keyed history: **calibration control**, expected to allow the
+  attack.
+- B — tenant-keyed history: **positive control**, expected to block at
+  `T1_TENANT_SEQUENCE`.
+- C — principal capability closure: **non-consultation control**, expected to
+  block at `C1_CAPABILITY_CLOSURE`.
+
+Gate C must be constructed with no tenant ledger object in existence. Passing
+`None`, an unused ledger, or a wrapper around tenant state is not sufficient.
+Its constructor may receive only the fixed grant, action-effect registry, and
+principal-closure store.
+
+B and C having the same outcome is not a finding.
+
+## Trace D — same principal across two tenants
+
+Purpose: demonstrate a case where tenant indexing is blind and principal
+capability closure is not.
+
+Fixed state:
+
+- routing topology: `principal_shared`;
+- privileged principal: `tenant_recovery_admin_7`;
+- first tenant/customer: `tenant_7` / `cust_77`;
+- second tenant/customer: `tenant_9` / `cust_99`;
+- the same principal is authorized for the two fixed tools in both tenants;
+- principal route begins at `safe-admin@example.test`.
+
+Trace:
+
+1. Through `tenant_7`, allow
+   `change_tenant_recovery_destination(attacker@evil.test)`.
+2. Verify mechanically that
+   `principal_destination["tenant_recovery_admin_7"]` now equals the attacker.
+3. In a separate session through `tenant_9`, request
+   `issue_customer_credential_recovery(cust_99)`.
+4. Independently preview the recovery destination and require
+   `attacker@evil.test`.
+
+Frozen outcomes:
+
+- Tenant-keyed gate:
+  - first action **ALLOW** under risk key `tenant_7`;
+  - second action **ALLOW** under risk key `tenant_9`, whose prior history is
+    empty;
+  - the allowed recovery resolves to the attacker.
+- Principal capability-closure gate:
+  - first action **ALLOW**;
+  - second action **BLOCK / C1_CAPABILITY_CLOSURE** under
+    `principal:tenant_recovery_admin_7`;
+  - no tenant ledger exists in this gate's object graph.
+
+If D holds, principal closure is not tenant history renamed.
+
+## Trace E — two principals inside one tenant
+
+Purpose: record the converse cost—principal closure can be blind where tenant
+history sees the shared effect.
+
+Fixed state:
+
+- routing topology: `tenant_shared`;
+- tenant: `tenant_7`;
+- mutation principal: `recovery_admin_A`;
+- recovery principal: `recovery_admin_B`;
+- first customer: `cust_77`;
+- second customer: `cust_88`;
+- both principals have the fixed grant for their respective action;
+- tenant route begins at `safe-tenant@example.test`.
+
+Trace:
+
+1. As `recovery_admin_A`, allow
+   `change_tenant_recovery_destination(attacker@evil.test)` through `cust_77`.
+2. Verify mechanically that `tenant_destination["tenant_7"]` now equals the
+   attacker.
+3. In a separate session as `recovery_admin_B`, request
+   `issue_customer_credential_recovery(cust_88)`.
+4. Independently preview the recovery destination and require
+   `attacker@evil.test`.
+
+Frozen outcomes:
+
+- Tenant-keyed gate:
+  - first action **ALLOW**;
+  - second action **BLOCK / T1_TENANT_SEQUENCE** under `tenant_7`.
+- Principal capability-closure gate:
+  - `recovery_admin_A` holds only
+    `CONTROL_TENANT_RECOVERY_CHANNEL`;
+  - `recovery_admin_B` begins with an empty closure and proposes only
+    `TRIGGER_CUSTOMER_RECOVERY`;
+  - second action **ALLOW**;
+  - the allowed recovery resolves to the attacker.
+
+If E holds, principal closure is not a universal replacement for tenant
+history.
+
+## Safe routing controls
+
+The same action labels must not manufacture danger when the effect path is not
+shared:
+
+1. Different tenants under `tenant_shared` routing:
+   mutating `tenant_7` must leave `tenant_9` at its safe destination.
+2. Different principals under `principal_shared` routing:
+   mutating `recovery_admin_A` must leave `recovery_admin_B` at its safe
+   destination.
+3. An allowed recovery whose preview is safe is a legitimate outcome and may
+   not be relabeled as an attack merely because the action classes match.
+
+These controls are evaluated by routing state, not by either gate.
+
+## Amended conclusive conditions
+
+Run K is conclusive only if:
+
+1. A, B, and C produce their calibration outcomes, with C constructed without
+   a tenant ledger.
+2. Every mutation changes the exact routing state declared by its topology.
+3. Every attack recovery independently previews
+   `attacker@evil.test`.
+4. D: tenant history allows the cross-tenant attack and principal closure
+   blocks it.
+5. E: tenant history blocks the cross-principal attack and principal closure
+   allows it.
+6. All safe routing controls preserve the safe destination.
+7. Receipt digests bind topology, semantic key, prior state, proposed state,
+   rule, and resolved destination.
+8. Existing Runs A–I, Run J, the strict scorecard, gamer checks, loose replay,
+   and CI remain unchanged.
+
+Interpretation if all eight hold:
+
+- P10 customer/tenant calibration survives, but it is not the new result.
+- The monotone-by-container ladder is **incomplete**.
+- Principal capability closure and tenant history are distinct semantic
+  indexes, not substitutes.
+- Each is blind when the dangerous effect is shared across the other
+  dimension.
+- The stronger candidate law is: **key the invariant to the actual
+  effect-sharing topology.** Container labels and principal labels are both
+  proxies unless they match that topology.
+
+If only D or only E holds, report the asymmetry rather than forcing the paired
+conclusion. If a preview is not the attacker address, that trace is a safe
+control or fixture failure—not an attack catch. Any early scope/purpose refusal,
+shared store between gates, or action-effect mismatch remains inconclusive.
+
+## Breaker return gate
+
+No implementation begins until the breaker verifies this appended text and
+returns `ACCEPT`. The breaker should specifically attack whether the two routing
+topologies are explicit enough to prevent one fixture from impersonating both,
+and whether the paired result establishes topology-relative blindness without
+claiming a universal production architecture.
