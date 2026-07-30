@@ -8,7 +8,7 @@
 >
 > ```
 > local     public     commit
-> 4ce4de5   fec3d89    Preregister Run L
+> 4ce4de5   fec3d891   Preregister Run L
 > 396df42   5a69bd0    addendum v2
 > 3f664f3   23c1b7e    addendum v3
 > edc9106   90638b8    Run L implementation (the broken candidate)

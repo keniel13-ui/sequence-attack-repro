@@ -424,7 +424,7 @@ before the corresponding implementation:
 ```
 010d83f  Preregister Run J shared-reset       ->  9566622  run_j.py
 af60ab5  Preregister Run K capability-closure ->  6220cf1  run_k.py
-fec3d89  Preregister Run L gossip             ->  90638b8  run_l.py
+fec3d891 Preregister Run L gossip             ->  90638b8  run_l.py
 ```
 
 **Correction, 2026-07-30.** An earlier version of this note cited `4ce4de5` and
