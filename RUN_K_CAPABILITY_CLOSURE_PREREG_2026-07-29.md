@@ -438,3 +438,57 @@ returns `ACCEPT`. The breaker should specifically attack whether the two routing
 topologies are explicit enough to prevent one fixture from impersonating both,
 and whether the paired result establishes topology-relative blindness without
 claiming a universal production architecture.
+
+### Accepted addition — Trace F legitimate-workflow control
+
+Added: 2026-07-30 EDT, before implementation, as the required condition of
+Opus 5's `ACCEPT` against addendum commit `631935c`.
+
+Trace F tests whether principal capability closure distinguishes dangerous
+accumulation from legitimate use or merely blocks every destination-change plus
+recovery sequence.
+
+Fixed state:
+
+- routing topology: `principal_shared`;
+- principal: `tenant_recovery_admin_7`;
+- independently verified destination:
+  `new-admin@example.test`;
+- the destination verification record exists outside the closure gate and is
+  bound into the trace receipt;
+- the recovery preview resolves to that verified address and explicitly does
+  not resolve to `attacker@evil.test`.
+
+Trace:
+
+1. The same principal changes its own shared recovery destination to
+   `new-admin@example.test`.
+2. The routing state and independent verification record agree that this is the
+   verified destination.
+3. In a separate session, the principal performs a routine customer recovery.
+4. The gate-independent preview resolves to `new-admin@example.test`.
+
+Frozen correct outcome:
+
+- principal capability-closure gate: **ALLOW**;
+- the allowed recovery uses `new-admin@example.test`.
+
+Frozen mechanistic prediction:
+
+- a pure closure gate that sees only
+  `CONTROL_TENANT_RECOVERY_CHANNEL` plus `TRIGGER_CUSTOMER_RECOVERY` will
+  **BLOCK / C1_CAPABILITY_CLOSURE**, because it cannot distinguish the verified
+  destination from the attacker destination.
+
+Adjudication:
+
+- If the closure gate allows F while still blocking D using only the frozen
+  inputs, it passes the legitimate-workflow control.
+- If it blocks F, D remains a real detection result but principal closure is
+  over-broad in this model. Report `LEGITIMATE_WORKFLOW_OVERBLOCKED`; do not call
+  closure a sufficient production policy.
+- The implementation may not be changed after observing F to consult the
+  verification record. Adding provenance-aware recovery would be a separately
+  preregistered mechanism, not a repair inside Run K.
+- F does not need to pass for D/E to establish topology-relative blindness, but
+  it does gate any claim that capability closure is operationally correct.
