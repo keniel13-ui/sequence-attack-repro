@@ -422,11 +422,18 @@ The earlier freezes do carry public proof of ordering, each in its own commit
 before the corresponding implementation:
 
 ```
-010d83f  Preregister Run J shared-reset      ->  9566622  run_j.py
+010d83f  Preregister Run J shared-reset       ->  9566622  run_j.py
 af60ab5  Preregister Run K capability-closure ->  6220cf1  run_k.py
-4ce4de5  Preregister Run L gossip             ->  edc9106  run_l.py
+fec3d89  Preregister Run L gossip             ->  90638b8  run_l.py
 ```
 
-v5 broke that pattern because the author batched `git add -A`. A `pre-commit` hook
+**Correction, 2026-07-30.** An earlier version of this note cited `4ce4de5` and
+`edc9106` for the Run L pair. Those are *local* hashes; the Run L history was
+published by cherry-pick, which rewrote them. The public commits are `fec3d89` and
+`90638b8`. Citing an identifier a reader cannot resolve is the same failure as
+citing a digest nobody can recompute — verify hashes against the public remote, not
+the working copy.
+
+v5 broke the ordering pattern because the author batched `git add -A`. A `pre-commit` hook
 now refuses any commit containing both a preregistration file and an implementation
 file, so the ordering is enforced rather than remembered.
