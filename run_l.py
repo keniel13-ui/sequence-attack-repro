@@ -321,11 +321,18 @@ class Gate:
 
 # -------------------------------------------------------------------- traces
 
-def world(policy="fail_closed", epoch=1):
-    """Build a fresh registry-bound observer set for one scenario."""
+def world(policy="fail_closed", epoch=1, observers=2):
+    """Build a fresh registry-bound observer set for one scenario.
+
+    `observers` exists only for the L2a/L2b count ablation (addendum v5). A
+    one-member registry is a COHERENT registry with one observer, not a broken
+    two-member one: W2 is still constructed so the adversary's reach is identical,
+    it is simply not registered, so it is not part of the authoritative set.
+    """
     reg = ObserverRegistry()
     w1, w2 = Observer("W1", "store_a"), Observer("W2", "store_b")
-    reg.register(RISK_KEY, epoch, [w1, w2], "reconciler_0", policy)
+    registered = [w1] if observers == 1 else [w1, w2]
+    reg.register(RISK_KEY, epoch, registered, "reconciler_0", policy)
     return reg, w1, w2, epoch
 
 
@@ -361,8 +368,8 @@ def main() -> int:
 
     def scenario(policy, suppress_w1=False, suppress_w2=False, partition_w2=False,
                  omit_w2=False, do_mutation=True, lag_w1=False,
-                 suppress_issuer_only=False):
-        reg, w1, w2, epoch = world(policy)
+                 suppress_issuer_only=False, observers=2):
+        reg, w1, w2, epoch = world(policy, observers=observers)
         issuer: list[str] = []
         if do_mutation:
             mutate(issuer, w1, w2)
@@ -395,6 +402,14 @@ def main() -> int:
                           lambda p: scenario(p, suppress_issuer_only=True))
     results["L2"] = trace("L2", "T1 issuer + W1 suppressed  (Run J's wall)", "fail_closed",
                           lambda p: scenario(p, suppress_w1=True))
+    # --- addendum v5: observer-count ablation, one variable ---------------------
+    # Identical registry, reconcile(), receipt, Gate, policy, risk key, epoch,
+    # mutation and adversary reach. ONLY the registered observer set differs.
+    results["L2a"] = trace("L2a", "COUNT ABLATION registry=[W1]      issuer + W1 suppressed",
+                           "fail_closed", lambda p: scenario(p, suppress_w1=True, observers=1))
+    results["L2b"] = trace("L2b", "COUNT ABLATION registry=[W1,W2]   issuer + W1 suppressed",
+                           "fail_closed", lambda p: scenario(p, suppress_w1=True, observers=2))
+
     results["L3"] = trace("L3", "T2 issuer + BOTH observers suppressed", "fail_closed",
                           lambda p: scenario(p, suppress_w1=True, suppress_w2=True))
     results["L4o"] = trace("L4-open", "T1P partition, fail_OPEN", "fail_open",
@@ -422,6 +437,12 @@ def main() -> int:
         ("L2 two observers repair Run J's wall (G1_GOSSIP_DISAGREE)",
          R["L2"]["authorization_decision"] == "BLOCK"
          and R["L2"]["rule"] == "G1_GOSSIP_DISAGREE"),
+        ("L2a COUNT ABLATION registry=[W1] ALLOWS (nothing survives to disagree)",
+         R["L2a"]["authorization_decision"] == "ALLOW"
+         and R["L2a"]["reconciliation_verdict"] == CONSISTENT),
+        ("L2b COUNT ABLATION registry=[W1,W2] BLOCKS — only the count differs",
+         R["L2b"]["authorization_decision"] == "BLOCK"
+         and R["L2b"]["rule"] == "G1_GOSSIP_DISAGREE"),
         ("L3 reach covering BOTH observers is NOT repaired",
          R["L3"]["authorization_decision"] == "ALLOW"),
         ("L4 fail_OPEN defeated by partition alone (no write to W2)",
@@ -449,11 +470,14 @@ def main() -> int:
     print()
     if conclusive:
         print("  CONFIRMED, narrowly:")
-        print("   - two observers repair the single-witness wall at T1;")
-        print("   - they do NOT repair it at T2 — reach covering the observer set wins;")
-        print("   - fail_OPEN reconciliation is defeated by partition alone, with no")
-        print("     write to the second observer. Fail-CLOSED is the load-bearing")
-        print("     property, not observer count;")
+        print("   - observer count is independently load-bearing at T1: on an")
+        print("     OTHERWISE IDENTICAL reconciliation path, registry=[W1] allows")
+        print("     the takeover and registry=[W1,W2] blocks it (L2a/L2b);")
+        print("   - count does NOT repair T2 — reach covering the observer set wins;")
+        print("   - fail-closed handling is SEPARATELY load-bearing at fixed count:")
+        print("     once the adversary already holds the issuer and W1, merely")
+        print("     partitioning W2 defeats fail_OPEN. No write to W2 is required;")
+        print("   - neither property substitutes for the other;")
         print("   - and fail-closed carries a measured availability cost (L6).")
         print()
         print("  Membership is registry-resolved; receipts are MAC-bound under the")

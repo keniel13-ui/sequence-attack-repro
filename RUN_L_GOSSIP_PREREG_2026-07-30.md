@@ -329,3 +329,82 @@ Three-observer thresholds, real dissemination, production key management / publi
 ### Seats for this repair
 
 Opus named the repair (PHASE 90) and was filtered mid-implementation. Aethar implemented under leadership order and first-pass re-attacked. **Formal PASS still requires an independent breaker (Kairos or Opus) who did not author the repair.**
+
+---
+
+# ADDENDUM v5 — OBSERVER-COUNT ABLATION (L2a / L2b)
+
+**Frozen 2026-07-30, PHASE 99, before any implementing code is written.**
+Original predictions and all prior addenda stand verbatim above. This adds a trace;
+it edits nothing.
+
+## Why this is owed
+
+The article draft claimed:
+
+> "L2 holds the handling fixed and varies the count — one witness allows, two block."
+
+**That claim is not supported by this file's code.** `world()` always registers two
+observers. No trace in Run L varies observer count. The "one witness allows" half
+came from **Run J**, which uses different machinery entirely — `ForkingCustomerGate`
+plus `ExternalWitness`, with no registry, no reconciliation function, no
+HMAC-bound receipt, no fail-open/fail-closed policy, and no membership validation.
+
+So the honest statement of current evidence is:
+
+> The two-observer reconciliation **package** repairs the T1 failure of the earlier
+> single-witness design.
+
+and **not**:
+
+> Observer count is independently load-bearing.
+
+Changing the count *and* the reconciliation architecture at once is a confound. It
+is the same error this suite exists to expose, committed by the author, in the
+paragraph that was supposed to be the correction of a previous overclaim.
+
+## The frozen prediction
+
+Two scenarios on the **identical** Run L code path — same `ObserverRegistry`, same
+`reconcile()`, same HMAC-bound receipt, same `Gate`, same `fail_closed` policy, same
+`RISK_KEY`, same epoch, same mutation, same issuer-claim suppression, same W1
+suppression. **The only difference is the registered observer set.**
+
+```
+L2a  registry = [W1]        issuer + W1 suppressed
+     PREDICTED: verdict CONSISTENT -> ALLOW   (nothing survives to disagree)
+
+L2b  registry = [W1, W2]    issuer + W1 suppressed
+     PREDICTED: verdict DISAGREE   -> BLOCK   (W2 still holds the mutation)
+```
+
+**Prediction L-D.** With reconciliation machinery, receipt format, policy and
+adversary reach all held fixed, registered observer count is independently
+load-bearing at T1: `[W1]` allows the takeover and `[W1, W2]` blocks it.
+
+**Falsifier.** L-D is falsified if `L2a` BLOCKs, or if `L2b` ALLOWs, or if the two
+differ in any input other than the registered observer set. If `L2a` blocks, then
+the repair is attributable to the reconciliation package rather than to count, and
+the article must say exactly that instead.
+
+**Non-result condition.** If `L2a` blocks for a reason unrelated to reconciliation
+— a membership or receipt error, `REGISTRY_MISS`, `OBSERVER_SET_MISMATCH` — the
+trace is void and reports nothing about count. A single-member registry must be a
+*coherent* registry, not a broken one.
+
+## What this trace does NOT establish
+
+- Nothing about thresholds. This is 1-vs-2 under unanimity, not k-of-n.
+- Nothing about T2. Reach covering the whole observer set still wins (L3), and
+  raising the count only raises the reach required.
+- Nothing about the registry itself. Registry custody remains the perimeter, and a
+  count is only as meaningful as the custody of the list that defines it.
+
+## Consequent obligations if L-D confirms
+
+1. `run_l.py`'s printed conclusion currently reads *"fail-CLOSED is the load-bearing
+   property, not observer count."* That is the same compression the article now
+   rejects, and **the program must not contradict the article a reader runs it
+   against.** It must be rewritten to state both, each scoped to its trace.
+2. The title's "A Second Witness Only Moved the Wall" is licensed only if L-D
+   confirms. Otherwise the honest title names the package, not the witness.

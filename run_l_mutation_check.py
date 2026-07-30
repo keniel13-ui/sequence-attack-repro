@@ -20,7 +20,7 @@ import tempfile
 
 
 EXPECTED_RUN_L_SHA256 = (
-    "16928f05c5850c13b3447d02d750b04d93c4029331d16111e0b9ea9bee0f8e98"
+    "9b86a6d761b7f1ef37883c23699fcc1fae92d1870e8e3dd6613d768a616adc5e"
 )
 
 MAC_GUARD = """\
