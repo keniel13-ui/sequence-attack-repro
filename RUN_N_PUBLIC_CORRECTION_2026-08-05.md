@@ -3,7 +3,8 @@
 **Date:** 2026-08-05 EDT
 **Applies to:** `RUN_N_RESULT_2026-08-04.md`, published on branch
 `run-n-state-version-provenance` in commit `2bdb46f`
-**Raised by:** an external cold audit of the published branch
+**Raised by:** A'Lathos, a separate model seat inside this project, auditing the
+published branch at the author's request
 **Confirmed by:** Ka'el, by execution, against the published code
 
 The frozen result file is **not edited**. This correction stands beside it, the same
@@ -26,8 +27,16 @@ Every control does not pass. One was never implemented, and three report success
 without exercising the property they are named for. Under the experiment's own
 conjunctive bar, the result class is withdrawn until repaired.
 
-**No one outside this project had to find this for us to be obligated to say it. But
-someone outside this project did find it, and that is worth stating plainly.**
+**Attribution correction, same day.** The first version of this document said the
+findings were raised by "an external cold audit" and "an outside reader of this branch."
+That was wrong. They were raised by A'Lathos, a separate model seat inside this project,
+run against the published branch at the author's request. No unaffiliated party found
+this. The error came from inferring a source rather than asking, and it is corrected here
+rather than left standing, because a project that polices its own overclaims cannot
+publish one about who caught it.
+
+The findings are unaffected. Every one was verified by execution against the published
+code before this document was written.
 
 ---
 
@@ -185,6 +194,9 @@ evidence for each one by name. A control that is not named in the contract-side 
 has not been reviewed, no matter how green the output is.**
 
 The outside-substrate reproduction counter remains **zero**. This correction was
-prompted by an external reader of the published branch — which is the first time
-publishing early has paid for itself in this project, and the argument for continuing
-to publish before the result is comfortable.
+prompted by a separate seat inside this project reading the published branch. That is
+weaker than an outside finding and should not be dressed up as one: this audit could
+have read the local files just as easily, so it is not evidence that publishing early
+paid for itself. What it does show is that a review seat with no stake in the result,
+walking the frozen contract instead of the printed output, caught in one pass what two
+in-line review seats missed twice.
