@@ -1,0 +1,27 @@
+{
+  "contract_sha256": "27ecc64827e984231564e5a5f068c6e47035e7dfe387470437e9d12cd8c1a8cd",
+  "empty_fields": {
+    "declared_dependencies": "Run K has no caller-declared dependency channel.",
+    "lineage_edges": "Multi-hop lineage is Run N only; not reproducible from main.",
+    "object_version": "Run K has no state versioning; that was Run N, which is withdrawn.",
+    "verification_record_id": "Trace F calls record_verification() so a verification EVENT exists, but no identifier is ever issued for it."
+  },
+  "independent_reproductions": 0,
+  "maker_note": "Produced by the maker. A maker's PASS is worthless; only a BLOCK is admissible. A clean run here means this is ready to hand to someone else.",
+  "not_evidence_for": [
+    "CONFIRMED_BOUNDED_POLICY_UNDER_VERIFICATION_CUSTODY (withdrawn 2026-08-05)",
+    "lineage traversal establishing verification custody"
+  ],
+  "outcomes": {
+    "REPRODUCED": 10
+  },
+  "rows": 10,
+  "traces_excluded": {
+    "G": "multi-hop lineage lives only in run_n.py, which is WITHDRAWN and not on main (HTTP 404). It cannot be reproduced from a clean clone, so contract section 7 drops it rather than shipping withdrawn machinery."
+  },
+  "traces_included": [
+    "D",
+    "E",
+    "F"
+  ]
+}
