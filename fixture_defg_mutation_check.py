@@ -45,9 +45,18 @@ def _apply(path: pathlib.Path, old: str, new: str, label: str) -> None:
 
 
 def _run(workdir: pathlib.Path) -> list[dict]:
+    """Run the emitter, DECLARING the hash of the run_k we are about to load.
+
+    This is the two-rung check @anp2network described (DEV 3d3cf): hashing the
+    patched file proves tree state; declaring it to a process that re-hashes what
+    it actually imported proves the patched bytes are the ones that ran.
+    """
+    import hashlib
+    sha = hashlib.sha256((workdir / "run_k.py").read_bytes()).hexdigest()
     out = workdir / "rows.jsonl"
     proc = subprocess.run(
-        [sys.executable, "fixture_defg.py", "--out", str(out)],
+        [sys.executable, "fixture_defg.py", "--out", str(out),
+         "--allow-module-sha", sha],
         cwd=workdir, capture_output=True, text=True,
     )
     if not out.exists():

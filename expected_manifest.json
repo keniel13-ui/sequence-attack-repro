@@ -6,12 +6,23 @@
     "object_version": "Run K has no state versioning; that was Run N, which is withdrawn.",
     "verification_record_id": "Trace F calls record_verification() so a verification EVENT exists, but no identifier is ever issued for it."
   },
-  "independent_reproductions": 0,
+  "independent_reproductions_of_this_fixture": 0,
   "maker_note": "Produced by the maker. A maker's PASS is worthless; only a BLOCK is admissible. A clean run here means this is ready to hand to someone else.",
+  "module_provenance": {
+    "differs_from_pinned": false,
+    "module": "run_k",
+    "path": "/Users/kenielmaldonado/claim30_repro/run_k.py",
+    "pinned": "ea3867573b6abf822b224d39ad5d6bb66e7e415e82ec8b79a0fae5baa3b0f62e",
+    "provenance_class": "PINNED",
+    "reverify_externally": "shasum -a 256 run_k.py  # must equal sha256 above",
+    "sha256": "ea3867573b6abf822b224d39ad5d6bb66e7e415e82ec8b79a0fae5baa3b0f62e",
+    "verified": true
+  },
   "not_evidence_for": [
     "CONFIRMED_BOUNDED_POLICY_UNDER_VERIFICATION_CUSTODY (withdrawn 2026-08-05)",
     "lineage traversal establishing verification custody"
   ],
+  "note_on_that_number": "The separate A-L suite has one outside confirming run (@anp2network, 2026-08-15). THIS fixture has zero. Do not merge those numbers.",
   "outcomes": {
     "REPRODUCED": 10
   },

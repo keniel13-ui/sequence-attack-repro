@@ -15,14 +15,90 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import io
 import json
+import pathlib
 import sys
 
 import run_k
 from run_k import TOOL_MUTATE, TOOL_RECOVER
 
 CONTRACT_SHA = "27ecc64827e984231564e5a5f068c6e47035e7dfe387470437e9d12cd8c1a8cd"  # v2
+
+# --- MODULE PROVENANCE -------------------------------------------------------
+# Found 2026-08-16 by attacking this fixture with a fabricated run_k that
+# returned hardcoded verdicts: it emitted 10/10 REPRODUCED, exit 0, actor_id
+# "FAKE", chain_sha256 all zeros. The classifier asserted REPRODUCED — a claim
+# about gate behaviour — without ever establishing it had run against the gate.
+# Only the golden-file diff caught it, so anyone checking the exit code or the
+# outcome counts got a clean pass on fabricated data.
+#
+# Credit: @anp2network raised this shape for the mutation harness (DEV 3d3cf):
+# a read-back assert proves a file on disk contains text; it does not prove the
+# mutated artifact was the one imported and executed. That applies here too.
+#
+# Their prescription, and what this implements: hash the source the process
+# ACTUALLY loaded, not the file we hope it loaded. Emit the hash so the claim is
+# re-derivable from outside the process — inside-the-run testimony alone is the
+# same disease.
+RUN_K_SHA256 = "ea3867573b6abf822b224d39ad5d6bb66e7e415e82ec8b79a0fae5baa3b0f62e"
+
+
+def loaded_run_k_sha256() -> tuple[str, str]:
+    """Hash the file the interpreter actually imported. Returns (sha, path)."""
+    path = getattr(run_k, "__file__", None)
+    if not path:
+        raise SystemExit("PROVENANCE: run_k has no __file__; refusing to emit.")
+    p = pathlib.Path(path).resolve()
+    return hashlib.sha256(p.read_bytes()).hexdigest(), str(p)
+
+
+def assert_provenance(declared: str | None = None) -> dict:
+    """Refuse to emit unless the loaded module is identified.
+
+    Default: must equal the pinned hash.
+
+    A mutation harness legitimately needs to run against a PATCHED module. It may
+    do so only by DECLARING the mutated hash up front via --allow-module-sha.
+    That is not a bypass: it forces the harness to state what it planted, and a
+    declared hash that does not match what loaded still fails. It closes both
+    rungs at once — the patch landed, AND the patched bytes are what the
+    interpreter imported. An undeclared mismatch can never produce a row.
+    """
+    got, path = loaded_run_k_sha256()
+    if declared:
+        if got != declared:
+            raise SystemExit(
+                "DECLARED-MODULE MISMATCH — REFUSING TO EMIT.\n"
+                f"  loaded   : {path}\n"
+                f"  sha256   : {got}\n"
+                f"  declared : {declared}\n"
+                "  The caller declared a mutated module hash and the process loaded\n"
+                "  something else. The mutation did not land, or it landed and a\n"
+                "  different copy was imported."
+            )
+        return {"module": "run_k", "path": path, "sha256": got,
+                "pinned": RUN_K_SHA256, "verified": True,
+                "provenance_class": "DECLARED_OVERRIDE",
+                "differs_from_pinned": got != RUN_K_SHA256,
+                "warning": ("Rows below were produced against a DECLARED NON-PINNED module. "
+                            "They are harness evidence, not evidence about the pinned gate."),
+                "reverify_externally": "shasum -a 256 run_k.py  # must equal sha256 above"}
+    if got != RUN_K_SHA256:
+        raise SystemExit(
+            "PROVENANCE FAILURE — REFUSING TO EMIT.\n"
+            f"  loaded : {path}\n"
+            f"  sha256 : {got}\n"
+            f"  pinned : {RUN_K_SHA256}\n"
+            "  The module this process imported is not the pinned run_k. A shadowed\n"
+            "  path, an editable install, or a stale checkout will do this. No row\n"
+            "  emitted from here could support a claim about the real gate."
+        )
+    return {"module": "run_k", "path": path, "sha256": got, "pinned": RUN_K_SHA256,
+            "verified": True, "provenance_class": "PINNED",
+            "differs_from_pinned": False,
+            "reverify_externally": "shasum -a 256 run_k.py  # must equal sha256 above"}
 
 # --- contract section 6, frozen BEFORE the emitter ran -----------------------
 # key: (trace_id, gate_kind, action) -> (expected_allow, expected_reason_code)
@@ -124,6 +200,22 @@ def _row(trace_id: str, order_index: int, gate_result: dict,
         "observed_reads": _observed_reads(r),
         "observed_writes": _observed_writes(r, allowed),
         "observed_provenance": "reconstructed",
+        # Ali (@alikhatersaibreakroom, DEV 3d4m9): "controls should emit evidence
+        # when they run, not silently disappear." Absent and passing were
+        # previously indistinguishable in these rows — the C5 hole, one layer up.
+        "control_ran": True,
+        "control_evidence": {
+            "gate_class": gate_kind,
+            "check_invoked": f"{gate_kind}.check({action})",
+            "receipt_sealed": bool(r.get("chain_sha256")),
+            "receipt_digest": r.get("chain_sha256"),
+        },
+        # Ali, same comment: name the source per row rather than one blunt flag.
+        "observation_source": (
+            "gate_receipt.prior_capability_closure"
+            if r.get("prior_capability_closure") is not None
+            else "gate_receipt.prior_action_classes"
+        ),
         "lineage_edges": None,
         "destination": destination,
         "verification_record_id": None,
@@ -144,12 +236,13 @@ def _row(trace_id: str, order_index: int, gate_result: dict,
     return row
 
 
-def build_rows() -> list[dict]:
+def build_rows(declared: str | None = None) -> list[dict]:
     """Drive the REAL public trace functions and read their gate receipts.
 
     The traces are not re-implemented here. run_k.trace_* is called directly so
     the fixture cannot drift from the artifact it claims to serialize.
     """
+    assert_provenance(declared)  # refuse to emit against an unidentified module
     sink = io.StringIO()
     with contextlib.redirect_stdout(sink):
         d = run_k.trace_d()
@@ -176,12 +269,13 @@ def build_rows() -> list[dict]:
     return rows
 
 
-def manifest(rows: list[dict]) -> dict:
+def manifest(rows: list[dict], declared: str | None = None) -> dict:
     counts: dict[str, int] = {}
     for r in rows:
         counts[r["outcome"]] = counts.get(r["outcome"], 0) + 1
     return {
         "contract_sha256": CONTRACT_SHA,
+        "module_provenance": assert_provenance(declared),
         "rows": len(rows),
         "outcomes": dict(sorted(counts.items())),
         "empty_fields": EMPTY_FIELDS,
@@ -197,7 +291,8 @@ def manifest(rows: list[dict]) -> dict:
             "CONFIRMED_BOUNDED_POLICY_UNDER_VERIFICATION_CUSTODY (withdrawn 2026-08-05)",
             "lineage traversal establishing verification custody",
         ],
-        "independent_reproductions": 0,
+        "independent_reproductions_of_this_fixture": 0,
+        "note_on_that_number": ("The separate A-L suite has one outside confirming run (@anp2network, 2026-08-15). THIS fixture has zero. Do not merge those numbers."),
         "maker_note": (
             "Produced by the maker. A maker's PASS is worthless; only a BLOCK is "
             "admissible. A clean run here means this is ready to hand to someone else."
@@ -209,11 +304,14 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", default="-", help="JSONL output path, or - for stdout")
     ap.add_argument("--manifest", default=None, help="write manifest JSON here")
+    ap.add_argument("--allow-module-sha", default=None,
+                    help="declare a non-pinned run_k hash (mutation harness only). "
+                         "Must match what actually loads or the run aborts.")
     ap.add_argument("--include-withdrawn", action="store_true",
                     help="request G rows (currently unavailable; see manifest)")
     args = ap.parse_args()
 
-    rows = build_rows()
+    rows = build_rows(args.allow_module_sha)
 
     if args.include_withdrawn:
         print("NOTE: G rows requested but unavailable. run_n.py is withdrawn and not "
@@ -227,7 +325,7 @@ def main() -> int:
         if out is not sys.stdout:
             out.close()
 
-    m = manifest(rows)
+    m = manifest(rows, args.allow_module_sha)
     if args.manifest:
         with open(args.manifest, "w") as fh:
             json.dump(m, fh, indent=2, sort_keys=True)

@@ -140,3 +140,62 @@ This was produced by the maker. A maker's BLOCK is admissible; a maker's PASS is
 A clean run here means the artifact is ready to hand to someone who is not the maker.
 
 **Independent reproductions: 0.** That number does not move until someone else runs it.
+
+---
+
+## Found by attacking this fixture, 2026-08-16
+
+Before shipping, the maker pointed a hostile `run_k` at this emitter — a fabricated module
+that returned the expected verdicts from hardcoded literals and touched no gate.
+
+**It emitted 10/10 `REPRODUCED`, exit 0**, with `actor_id: FAKE` and `chain_sha256` all zeros.
+The classifier asserted `REPRODUCED` — a claim about gate behaviour — without ever
+establishing it had run against the gate. Only the golden-file diff caught it, so anyone
+checking the exit code or the outcome counts got a clean pass on fabricated data.
+
+This is [@anp2network's](https://dev.to/anp2network) shadow-import point
+([DEV `3d3cf`](https://dev.to/anp2network/comment/3d3cf)) applied to the fixture rather than
+the mutation harness: *a read-back assert proves a file on disk contains text; it does not
+prove the mutated artifact was the one imported and executed.*
+
+**The fix, and it refuses rather than warns:**
+
+- The emitter hashes the source the interpreter **actually loaded** (`run_k.__file__`) and
+  compares it to a pinned value. Mismatch aborts with no output file and a non-zero exit.
+- The hash is written to the manifest with `reverify_externally`, so the claim is
+  re-derivable from tree state **outside** the process. Inside-the-run testimony alone is
+  the same disease.
+- A mutation harness must **declare** the mutated hash via `--allow-module-sha`. That is not
+  a bypass: a declared hash that does not match what loaded still aborts, and a declared
+  non-pinned run is stamped `DECLARED_OVERRIDE` with a warning that its rows are harness
+  evidence, not evidence about the pinned gate. It closes both rungs at once — the patch
+  landed, and the patched bytes are what ran.
+
+Verified against four attacks: undeclared fake module (refused), fake module declaring the
+pinned hash (refused), fake module declaring a garbage hash (refused), fake module declaring
+its true hash (permitted and labelled).
+
+## What a clean diff actually proves
+
+`diff out.jsonl expected.jsonl` returning nothing proves the emitter is **deterministic and
+agrees with a maker-produced golden file.** It does **not** prove the values are correct.
+
+Correctness comes from the frozen contract, not the golden. The golden is derived output; the
+expected verdicts and reason codes in contract §6 were frozen before the emitter existed, and
+that freeze is what caught the maker's own Trace D error. A golden file used as an oracle is
+an artifact under the maker's control — treat a match as evidence of reproducibility, and read
+the contract for the claim.
+
+## Fields added 2026-08-16
+
+At [@alikhatersaibreakroom's](https://dev.to/alikhatersaibreakroom) request
+([DEV `3d4m9`](https://dev.to/alikhatersaibreakroom/comment/3d4m9)):
+
+- `control_ran` and `control_evidence` — *"controls should emit evidence when they run, not
+  silently disappear."* Absent and passing controls were previously indistinguishable in these
+  rows. That is the C5 hole one layer up.
+- `observation_source` — names the receipt field each row's observation came from, replacing a
+  single blunt `observed_provenance: reconstructed` flag.
+
+**Independent reproductions of THIS fixture: 0.** The separate A–L suite has one outside
+confirming run. Do not merge those numbers.
