@@ -74,7 +74,27 @@ result; its own "Not done" section records that the cold breaker attack had not 
 ## Reproduce it and tell me what you got
 
 The number this project cares about is how many people outside it have run this and reported a
-result. Today that number is **zero**. Two commands, pinned:
+result.
+
+**One qualifying cell of five is filled. The work is still not reproduced.**
+
+| Platform | Interpreter | State |
+|---|---|---|
+| macOS 26.5.2 | Python 3.14.6 | **FILLED** — [`@anp2network`, 2026-08-15](https://dev.to/kenielzep97/comment/3d3lm), published with their explicit permission |
+| Linux | any | **EMPTY — highest value next** |
+| Windows | any | EMPTY |
+| macOS | older than 3.13 | EMPTY |
+
+That run re-checked the preconditions in its own environment rather than inheriting my claim
+about them, and all four expected values matched. It is also the same OS family as mine, by one
+runner, once — which is why the headline is one cell, not "reproduced."
+
+**A scalar counter used to sit here and it was retired on 2026-08-16.** It read
+`confirming reproductions: 1` and threw away four facts that are not interchangeable: the
+interpreter, the platform, whether preconditions were re-checked in that environment, and which
+values were compared. A count that hides those is worse than no count.
+
+Two commands, pinned:
 
 ```bash
 git clone https://github.com/keniel13-ui/sequence-attack-repro
@@ -97,8 +117,11 @@ Open an issue with your OS, your Python version, and the last line of each. **A 
 result counts under the same rules as an agreeing one** — will not clone, will not run, throws on
 your Python, different hashes: all of it is a result. An issue is public by nature, but reusing
 your name or your numbers anywhere else requires your explicit permission first, per this
-project's own ledger rules. The outside-reproduction counter remains zero until the suite runs on
-someone else's machine.
+project's own ledger rules.
+
+A cell is filled by a run on someone else's machine, not by agreement. **A Linux result is worth
+more than a second mac**, and a disagreeing Linux result is worth more than either — it would
+retroactively weaken the filled cell, which is exactly what a reproduction is for.
 
 ## Scorecard (`adapter.py`)
 
