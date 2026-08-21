@@ -9,6 +9,10 @@ exact published run_l.py bytes:
 
 Each old attack must stay blocked in the clean control and become allowed only
 when its corresponding protection is removed.
+
+The candidate-input listing follows
+RUN_L_CANDIDATE_INPUT_MANIFEST_PARAGRAPH_2026-08-21.md
+SHA-256 3730fa5be678ee8764287f8a89806e22f676803e9829148c5e32bc765174b0d1.
 """
 
 from __future__ import annotations
@@ -17,11 +21,16 @@ import hashlib
 import importlib.util
 from pathlib import Path
 import tempfile
+from typing import NamedTuple
 
 
 EXPECTED_RUN_L_SHA256 = (
     "bd16d319631045f342dcf8d9c5795ff6ea996ad653ac9a5e7bf8d8e9da32a313"
 )
+
+# Fixed-order digest input set for candidate_sha256. One path. Mutants are
+# generated at runtime from these same bytes and are not inputs.
+DIGEST_INPUT_PATHS = ("run_l.py",)
 
 MAC_GUARD = """\
         if not self._mac_ok(receipt):
@@ -35,6 +44,67 @@ SET_MUTANT = "    if False and evaluated_sorted != sorted(manifest.members):"
 
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+class CandidateInputManifest(NamedTuple):
+    entries: tuple[tuple[str, str], ...]
+    candidate_sha256: str | None
+    source_bytes: bytes | None
+    checker_sha256: str
+    errors: tuple[str, ...]
+
+
+def _read_regular_nonsymlink(path: Path) -> bytes:
+    if path.is_symlink() or not path.is_file():
+        raise OSError("missing, not a regular file, or symlink")
+    return path.read_bytes()
+
+
+def candidate_input_manifest(
+    root: Path, checker_path: Path
+) -> CandidateInputManifest:
+    checker_hash = sha256(Path(checker_path).read_bytes())
+    entries: list[tuple[str, str]] = []
+    errors: list[str] = []
+    source_bytes: bytes | None = None
+
+    for relative_path in DIGEST_INPUT_PATHS:
+        target = root / relative_path
+        try:
+            raw_bytes = _read_regular_nonsymlink(target)
+        except OSError as exc:
+            entries.append((relative_path, "UNAVAILABLE"))
+            errors.append(f"cannot read {relative_path}: {exc}")
+            continue
+        entries.append((relative_path, f"sha256:{sha256(raw_bytes)}"))
+        if relative_path == "run_l.py":
+            source_bytes = raw_bytes
+
+    candidate = sha256(source_bytes) if source_bytes is not None else None
+    if candidate is not None and candidate != EXPECTED_RUN_L_SHA256:
+        errors.append(
+            f"candidate hash mismatch: expected {EXPECTED_RUN_L_SHA256}, "
+            f"found {candidate}"
+        )
+
+    return CandidateInputManifest(
+        entries=tuple(entries),
+        candidate_sha256=candidate,
+        source_bytes=source_bytes,
+        checker_sha256=checker_hash,
+        errors=tuple(errors),
+    )
+
+
+def print_candidate_input_manifest(manifest: CandidateInputManifest) -> None:
+    for index, (path, content_id) in enumerate(manifest.entries):
+        print(f"candidate_input     {index:03d}\t{path}\t{content_id}")
+    print(f"candidate_sha256    {manifest.candidate_sha256 or 'UNAVAILABLE'}")
+    print(f"checker_sha256      {manifest.checker_sha256}")
+    if manifest.errors:
+        print("candidate_manifest_verdict  HALT")
+    else:
+        print("candidate_manifest_verdict  ACCEPT")
 
 
 def replace_once(source: str, old: str, new: str, label: str) -> str:
@@ -123,14 +193,15 @@ def compact(result: dict) -> str:
 
 
 def main() -> int:
-    source_path = Path(__file__).with_name("run_l.py")
-    source_bytes = source_path.read_bytes()
-    actual_hash = sha256(source_bytes)
-    if actual_hash != EXPECTED_RUN_L_SHA256:
-        raise AssertionError(
-            f"run_l.py hash mismatch: expected {EXPECTED_RUN_L_SHA256}, "
-            f"found {actual_hash}"
-        )
+    checker_path = Path(__file__)
+    manifest = candidate_input_manifest(checker_path.parent, checker_path)
+    print_candidate_input_manifest(manifest)
+    if manifest.errors:
+        return 2
+
+    assert manifest.source_bytes is not None
+    assert manifest.candidate_sha256 is not None
+    source_bytes = manifest.source_bytes
 
     source = source_bytes.decode()
     mac_mutant = replace_once(source, MAC_GUARD, "", "MAC guard")
@@ -158,7 +229,6 @@ def main() -> int:
         no_mac_b2 = omitted_observer_attack(no_mac)
         no_set_digest_ok, no_set_b3 = forged_receipt_attack(no_set)
 
-        print(f"candidate_sha256  {actual_hash}")
         print(
             "receipt_auth      "
             f"clean={compact(clean_b3):<34} "
