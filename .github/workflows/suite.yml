@@ -1,4 +1,4 @@
-# Composition suite — clone the same way a stranger would.
+# Composition suite: clone the same way a stranger would.
 # Green badge = the public scorecard and preregistered boundary tests still hold.
 name: suite
 
@@ -8,15 +8,21 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   scorecard:
     name: scorecard + composition claims
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
@@ -34,3 +40,51 @@ jobs:
 
       - name: CI assertions (scores + Run D)
         run: python3 ci_check.py
+
+      - name: Run K (topology-relative blindness)
+        run: python3 run_k.py
+
+      - name: Run L (two-observer reconciliation)
+        run: python3 run_l.py
+
+      - name: Run L mutation check
+        run: python3 run_l_mutation_check.py
+
+  # Same claims, as unit tests, on the platforms and interpreters the README's
+  # reproduction matrix asks about. CI runs are not outside reproductions.
+  tests:
+    name: tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+        python: ["3.10", "3.13"]
+    env:
+      # Windows runners default stdout to cp1252; adapter.py and run_k.py print
+      # characters outside it. UTF-8 mode is the documented Windows setting.
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit tests
+        run: python -m unittest discover -v
+
+  lint:
+    name: lint (ruff, CI only; the suite itself stays stdlib-only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install ruff==0.17.1
+      - run: ruff check .

@@ -1,0 +1,11 @@
+# CI-only lint. The suite has no runtime dependencies and this adds none.
+#
+# Experiment scripts are hash-pinned (run_l_mutation_check.py pins run_l.py;
+# the Run K fixture branch pins run_k.py), so they are never reformatted or
+# auto-fixed. Repository-wide, only errors that would break execution are
+# checked: syntax errors, undefined names, invalid comparisons.
+target-version = "py39"
+line-length = 120
+
+[lint]
+select = ["E9", "F63", "F7", "F82"]
