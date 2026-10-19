@@ -126,5 +126,30 @@ class ReproExitStatus(unittest.TestCase):
         self.assertIn("LADDER FAILED: run(s) B", err)
 
 
+class MutationCheckWritesUtf8(unittest.TestCase):
+    """Failure mode: run_l_mutation_check.py wrote its mutant copies with the
+    locale encoding. On Windows (cp1252) the non-ASCII characters in run_l.py
+    were written as cp1252 bytes, and importing the mutant failed with
+    "SyntaxError: (unicode error) 'utf-8' codec can't decode byte 0x97"
+    (observed on a windows-2025 runner). Simulated here by making every
+    write_text that does not name an encoding use cp1252."""
+
+    def test_mutants_load_when_locale_is_cp1252(self):
+        import pathlib
+
+        import run_l_mutation_check
+
+        real_write_text = pathlib.Path.write_text
+
+        def cp1252_default(self, data, encoding=None, errors=None, newline=None):
+            return real_write_text(self, data, encoding=encoding or "cp1252", errors=errors)
+
+        out = io.StringIO()
+        with mock.patch.object(pathlib.Path, "write_text", cp1252_default), contextlib.redirect_stdout(out):
+            code = run_l_mutation_check.main()
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertIn("MUTATION VERDICT  PASS", out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

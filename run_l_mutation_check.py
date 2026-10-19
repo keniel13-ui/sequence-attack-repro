@@ -142,8 +142,8 @@ def main() -> int:
         mac_path = root / "run_l_no_mac.py"
         set_path = root / "run_l_no_set_check.py"
         clean_path.write_bytes(source_bytes)
-        mac_path.write_text(mac_mutant)
-        set_path.write_text(set_mutant)
+        mac_path.write_text(mac_mutant, encoding="utf-8")
+        set_path.write_text(set_mutant, encoding="utf-8")
 
         clean = load_module(clean_path, "run_l_clean")
         no_mac = load_module(mac_path, "run_l_no_mac")
