@@ -86,15 +86,18 @@ class Scorecard(unittest.TestCase):
 
 
 class LooseReplay(unittest.TestCase):
-    """README "Was 5/7 / 6/7 under the loose scorer" notes and loose_replay.py."""
+    """README "Was 5/7 / 6/7 under the loose scorer" notes and LOOSE_SCORER_RECEIPT.md."""
 
     def test_historical_loose_numbers(self):
         expected = {
             "PrefixDenyGamer": 5,
             "BlanketRuleGamer": 5,
             "PurposeConditionedGamer": 6,
-            "CustomerScopedPurpose": 6,
+            "SessionScopedPurpose": 4,
         }
+        # CustomerScopedPurpose is deliberately not pinned: LOOSE_SCORER_RECEIPT.md
+        # records loose 7/7 (no fork applied), while loose_replay.py on main now
+        # applies the S7 fork and prints 6/7. The two disagree; see the PR notes.
         for name, loose in expected.items():
             with self.subTest(gate=name):
                 self.assertEqual(loose_replay.loose(getattr(adapter, name)), loose)
