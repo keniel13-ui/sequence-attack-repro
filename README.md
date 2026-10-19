@@ -18,6 +18,13 @@ python3 run_j.py      # preregistered shared-reset witness boundary
 
 No install. No network. No model. Stdlib only.
 
+On Windows, set the environment variable `PYTHONUTF8=1` first. Without UTF-8 mode,
+`adapter.py` and `run_k.py` stop with `UnicodeEncodeError` on a cp1252 console or pipe (observed on
+a `windows-2025` CI runner, Python 3.10 and 3.13).
+
+How the files fit together: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Rules for changes:
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
+
 ```bash
 python3 repro.py                 # full ladder A→I (named runs + receipts)
 python3 run_j.py                 # separate Prediction 11 v2 experiment
