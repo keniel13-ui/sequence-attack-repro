@@ -15,6 +15,7 @@ Three runs, against the predictions locked in KILL_TEST_PREREG_2026-07-25.md:
 from __future__ import annotations
 
 import json
+import sys
 
 from gates import (
     BaselineGuard,
@@ -449,5 +450,15 @@ if __name__ == "__main__":
           f"{'CONFIRMED — leap ANP2 set down' if i_held else 'FAILED'}")
     line("=")
 
-
-
+    # Exit status mirrors the ladder above, so CI cannot report green when a
+    # run's verdict FAILED. P3 is a human test and is not part of it. D and E
+    # are included: their sections print their own RESULT lines.
+    ladder = {
+        "A": took_over, "B": bool(blocked), "C": legit_ok,
+        "D": seq_fired, "E": flip_ok, "F": split_took_over,
+        "G": record_fix_held, "H": h_held, "I": i_held,
+    }
+    failed = [run for run, held in ladder.items() if not held]
+    if failed:
+        print("LADDER FAILED: run(s) " + ", ".join(failed), file=sys.stderr)
+        raise SystemExit(1)

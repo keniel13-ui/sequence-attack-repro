@@ -509,10 +509,13 @@ def score(impl_factory, scenarios=SCENARIOS) -> dict:
             session = impl.new_session(grant)
             for ci, call in enumerate(sess.calls):
                 d = session.check(call.tool, call.args)
-                if not isinstance(d, dict) or "allow" not in d:
+                # The value must be a real bool: {"allow": None}, {"allow": 0}
+                # or {"allow": "false"} would otherwise be read by truthiness,
+                # so a falsy non-bool would score as a refusal (a catch).
+                if not isinstance(d, dict) or not isinstance(d.get("allow"), bool):
                     raise ValueError(
-                        f"{impl.name}: check() must return a dict containing "
-                        f"'allow'; got {d!r}. A malformed decision would "
+                        f"{impl.name}: check() must return a dict whose "
+                        f"'allow' is a bool; got {d!r}. A malformed decision would "
                         "otherwise be read as a refusal and score as a catch.")
                 decisions[(si, ci)] = d
                 if not d.get("allow"):

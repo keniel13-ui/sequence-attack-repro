@@ -1,0 +1,5 @@
+# Keep LF line endings in every checkout, including Windows clones where
+# core.autocrlf=true (the Git for Windows default). Scripts here pin SHA-256
+# digests of sibling files (run_l_mutation_check.py pins run_l.py), and a CRLF
+# checkout changes those bytes, so the check halts with a hash mismatch.
+* text=auto eol=lf
