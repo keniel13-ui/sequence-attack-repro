@@ -1,0 +1,6 @@
+# Stricter lint for the tests, which are new code and not pinned.
+extend = "../ruff.toml"
+
+[lint]
+select = ["E", "F", "W", "B", "UP", "I"]
+ignore = ["UP006", "UP035"]
